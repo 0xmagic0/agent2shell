@@ -1,0 +1,29 @@
+# planning docs
+.planning/
+
+# Claude Code
+CLAUDE.md
+.claude/
+
+# GGA
+.gga
+AGENTS.md
+
+# atl
+.atl
+
+# Build artifacts
+/agent2shell
+*.test
+*.out
+/bin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
