@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/0xmagic0/agent2shell/pkg/recorder"
 	"github.com/0xmagic0/agent2shell/pkg/socket"
 	"github.com/0xmagic0/agent2shell/pkg/types"
 )
@@ -17,9 +18,27 @@ func (l *Listener) buildHandler(socketPath string) socket.Handler {
 		switch req.Type {
 		case types.RunRequest:
 			timeout := time.Duration(req.Timeout) * time.Second
-			resp, err := sess.Exec(ctx, req.Command, timeout)
-			if err != nil {
-				return nil, err
+			resp, execErr := sess.Exec(ctx, req.Command, timeout)
+			if execErr != nil {
+				if l.cfg.Recorder != nil {
+					// best-effort: recording errors must not fail the request
+					_ = l.cfg.Recorder.Log(recorder.Entry{
+						Timestamp: time.Now().UTC().Format(time.RFC3339),
+						Command:   req.Command,
+						Error:     execErr.Error(),
+					})
+				}
+				return nil, execErr
+			}
+			if l.cfg.Recorder != nil {
+				// best-effort: recording errors must not fail the request
+				_ = l.cfg.Recorder.Log(recorder.Entry{
+					Timestamp:  time.Now().UTC().Format(time.RFC3339),
+					Command:    req.Command,
+					Output:     resp.Output,
+					ExitCode:   resp.ExitCode,
+					DurationMS: resp.DurationMS,
+				})
 			}
 			if l.cfg.OnExec != nil {
 				l.cfg.OnExec(req.Command, resp)

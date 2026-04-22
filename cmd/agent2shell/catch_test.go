@@ -21,6 +21,7 @@ func newCatchTestCmd() *cobra.Command {
 	cmd.Flags().StringP("host", "H", "0.0.0.0", "TCP address to bind")
 	cmd.Flags().DurationP("timeout", "t", 30*time.Second, "per-command execution timeout")
 	cmd.Flags().String("tag", "", "optional session label")
+	cmd.Flags().Bool("auto-upgrade", false, "attempt shell upgrade on connect (sh → bash)")
 	return cmd
 }
 

@@ -46,6 +46,10 @@ type Config struct {
 
 	// Tag is an optional user-supplied label stored in SessionInfo.Tag.
 	Tag string
+
+	// Recording indicates whether session I/O is being recorded to disk.
+	// Stored in SessionInfo.Recording so status queries reflect it.
+	Recording bool
 }
 
 // Session owns a TCP connection to a single reverse shell. Commands are
@@ -85,6 +89,7 @@ func New(cfg Config) (*Session, error) {
 			RemoteAddr:  cfg.RemoteAddr,
 			Tag:         cfg.Tag,
 			ConnectedAt: time.Now().UTC(),
+			Recording:   cfg.Recording,
 		},
 	}
 

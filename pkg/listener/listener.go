@@ -11,9 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xmagic0/agent2shell/pkg/recorder"
 	"github.com/0xmagic0/agent2shell/pkg/session"
 	"github.com/0xmagic0/agent2shell/pkg/socket"
 	"github.com/0xmagic0/agent2shell/pkg/types"
+	"github.com/0xmagic0/agent2shell/pkg/upgrade"
 )
 
 // Config holds listener construction parameters.
@@ -52,6 +54,14 @@ type Config struct {
 	// established and the Unix socket is ready. The context is cancelled when
 	// Listen shuts down. Optional; nil means no callback.
 	OnSessionReady func(ctx context.Context, sess *session.Session, socketPath string)
+
+	// Recorder is an optional JSONL recorder for exec outcomes. When non-nil,
+	// every completed Exec is appended to the log file. Nil means no recording.
+	Recorder *recorder.Recorder
+
+	// AutoUpgrade enables automatic shell upgrade on connect. When true,
+	// the listener attempts to promote sh → bash immediately after detection.
+	AutoUpgrade bool
 }
 
 // Listener binds a TCP port and manages the lifecycle of a single reverse-shell
@@ -142,6 +152,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 		DefaultTimeout: l.cfg.DefaultTimeout,
 		OnOutput:       l.cfg.OnOutput,
 		Tag:            l.cfg.Tag,
+		Recording:      l.cfg.Recorder != nil,
 	})
 	if err != nil {
 		// best-effort: close conn if session creation fails
@@ -153,6 +164,25 @@ func (l *Listener) Listen(ctx context.Context) error {
 	// Run detect — best-effort: partial metadata is acceptable.
 	// best-effort: detect errors (timeouts, partial) are non-fatal
 	_ = sess.Detect(ctx)
+
+	// Attempt shell upgrade when requested. Re-run detect on success so
+	// SessionInfo reflects the upgraded shell. Both steps are best-effort.
+	if l.cfg.AutoUpgrade {
+		info := sess.Info()
+		result := upgrade.Attempt(
+			ctx,
+			func(ctx context.Context, data []byte) error { return sess.WriteRaw(data) },
+			func(ctx context.Context, cmd string, timeout time.Duration) (*types.ExecResponse, error) {
+				return sess.Exec(ctx, cmd, timeout)
+			},
+			info.Shell,
+		)
+		if result.Upgraded {
+			l.notify("Upgraded shell: %s → %s", result.FromShell, result.ToShell)
+			// best-effort: re-detect to update metadata with new shell
+			_ = sess.Detect(ctx)
+		}
+	}
 
 	// Use a derived context for the socket server so we can cancel it
 	// independently when the session closes (e.g. via a KillRequest).
