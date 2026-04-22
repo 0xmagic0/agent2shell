@@ -134,7 +134,7 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 	}
 
 	cfg.OnExec = func(command string, resp *types.ExecResponse) {
-		fmt.Fprintf(os.Stderr, "[exec] %s\n", command)
+		fmt.Fprintf(os.Stderr, "[agent] %s\n", command)
 		if resp.Output != "" {
 			fmt.Fprint(os.Stdout, resp.Output)
 			if !strings.HasSuffix(resp.Output, "\n") {
