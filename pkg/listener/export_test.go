@@ -8,10 +8,11 @@ import (
 // NewWithSession creates a Listener with an already-established session and a
 // known socket path. Exported only for tests in the listener_test package.
 func NewWithSession(sess *session.Session, socketPath string) *Listener {
-	return &Listener{
-		cfg:     Config{SocketPath: socketPath},
-		session: sess,
+	l := &Listener{
+		cfg: Config{SocketPath: socketPath},
 	}
+	l.session.Store(sess)
+	return l
 }
 
 // BuildHandler exposes buildHandler for tests in the listener_test package.

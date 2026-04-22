@@ -123,3 +123,53 @@ func TestCloseSignalsDoneCh(t *testing.T) {
 		t.Fatal("Done() channel not closed within 100ms after Close()")
 	}
 }
+
+// ─── Task 5.1: WriteRaw ───────────────────────────────────────────────────────
+
+func TestWriteRaw_Success(t *testing.T) {
+	shell, app := net.Pipe()
+	defer shell.Close()
+
+	sess, err := session.New(session.Config{Conn: app})
+	require.NoError(t, err)
+	defer sess.Close()
+
+	data := []byte("hello raw\n")
+
+	// Read from shell end concurrently — net.Pipe is synchronous so
+	// WriteRaw blocks until the other end reads.
+	type readResult struct {
+		buf []byte
+		err error
+	}
+	readCh := make(chan readResult, 1)
+	go func() {
+		buf := make([]byte, len(data))
+		_, err := shell.Read(buf)
+		readCh <- readResult{buf: buf, err: err}
+	}()
+
+	err = sess.WriteRaw(data)
+	require.NoError(t, err)
+
+	select {
+	case r := <-readCh:
+		require.NoError(t, r.err)
+		assert.Equal(t, data, r.buf)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for shell to receive data")
+	}
+}
+
+func TestWriteRaw_ClosedSession(t *testing.T) {
+	shell, app := net.Pipe()
+	defer shell.Close()
+
+	sess, err := session.New(session.Config{Conn: app})
+	require.NoError(t, err)
+
+	require.NoError(t, sess.Close())
+
+	err = sess.WriteRaw([]byte("should fail"))
+	assert.ErrorIs(t, err, session.ErrSessionClosed)
+}

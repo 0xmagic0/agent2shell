@@ -13,16 +13,17 @@ import (
 // the appropriate session method.
 func (l *Listener) buildHandler(socketPath string) socket.Handler {
 	return func(ctx context.Context, req *types.Request) (any, error) {
+		sess := l.session.Load()
 		switch req.Type {
 		case types.RunRequest:
 			timeout := time.Duration(req.Timeout) * time.Second
-			return l.session.Exec(ctx, req.Command, timeout)
+			return sess.Exec(ctx, req.Command, timeout)
 
 		case types.StatusRequest:
-			return l.session.Info(), nil
+			return sess.Info(), nil
 
 		case types.ListRequest:
-			info := l.session.Info()
+			info := sess.Info()
 			return types.SessionsResponse{
 				Sessions: []types.SessionEntry{{
 					SessionInfo: info,
@@ -32,7 +33,7 @@ func (l *Listener) buildHandler(socketPath string) socket.Handler {
 
 		case types.KillRequest:
 			// R9.6: respond synchronously with {"status":"ok"}, close async.
-			go l.session.Close() //nolint:errcheck // best-effort async close
+			go sess.Close() //nolint:errcheck // best-effort async close
 			return map[string]string{"status": "ok"}, nil
 
 		default:

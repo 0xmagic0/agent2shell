@@ -106,6 +106,21 @@ func (s *Session) Done() <-chan struct{} {
 	return s.doneCh
 }
 
+// WriteRaw writes data directly to the underlying TCP connection without
+// framing or mutex. conn.Write is goroutine-safe; a mutex would deadlock
+// if called during an in-progress Exec (which holds mu).
+//
+// Returns ErrSessionClosed if the session has been closed.
+func (s *Session) WriteRaw(data []byte) error {
+	if s.closed.Load() {
+		return ErrSessionClosed
+	}
+	if _, err := s.conn.Write(data); err != nil {
+		return fmt.Errorf("session: write raw: %w", err)
+	}
+	return nil
+}
+
 // Close shuts down the session. It is idempotent — calling it multiple times
 // is safe and always returns nil. Close causes any in-progress Exec to return
 // ErrSessionClosed.

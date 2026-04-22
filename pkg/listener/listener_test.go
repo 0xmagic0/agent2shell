@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xmagic0/agent2shell/internal/testutil"
 	"github.com/0xmagic0/agent2shell/pkg/listener"
+	"github.com/0xmagic0/agent2shell/pkg/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -139,6 +140,68 @@ func TestListenContextCancelAfterConnection(t *testing.T) {
 		}
 		return false
 	}, 4*time.Second, 20*time.Millisecond, "unix socket did not appear")
+
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Listen did not return within 3s after context cancel")
+	}
+}
+
+// ─── Task 5.2 — OnSessionReady callback ───────────────────────────────────
+
+func TestListenOnSessionReady(t *testing.T) {
+	port, err := testutil.FreePort()
+	require.NoError(t, err)
+
+	sockPath := testutil.TempSocket(t)
+
+	type callbackArgs struct {
+		sess       *session.Session
+		socketPath string
+	}
+	callbackCh := make(chan callbackArgs, 1)
+
+	l, err := listener.New(listener.Config{
+		Host:           "127.0.0.1",
+		Port:           port,
+		SocketPath:     sockPath,
+		DefaultTimeout: 200 * time.Millisecond,
+		OnSessionReady: func(_ context.Context, sess *session.Session, socketPath string) {
+			callbackCh <- callbackArgs{sess: sess, socketPath: socketPath}
+		},
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- l.Listen(ctx) }()
+
+	// Connect a fake shell.
+	var shellConn net.Conn
+	require.Eventually(t, func() bool {
+		c, dialErr := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if dialErr == nil {
+			shellConn = c
+			return true
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond, "could not connect fake shell")
+	defer shellConn.Close()
+
+	// Wait for callback to fire.
+	select {
+	case args := <-callbackCh:
+		assert.NotNil(t, args.sess, "sess must be non-nil")
+		assert.Equal(t, sockPath, args.socketPath, "socketPath must match configured path")
+	case <-time.After(4 * time.Second):
+		t.Fatal("OnSessionReady callback never fired")
+	}
 
 	cancel()
 

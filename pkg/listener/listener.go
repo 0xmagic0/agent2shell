@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/0xmagic0/agent2shell/pkg/session"
@@ -40,13 +41,18 @@ type Config struct {
 	// OnStatus is called for lifecycle events (connection, session ready).
 	// Optional; nil means no status output.
 	OnStatus func(msg string)
+
+	// OnSessionReady is called in a new goroutine once the session is fully
+	// established and the Unix socket is ready. The context is cancelled when
+	// Listen shuts down. Optional; nil means no callback.
+	OnSessionReady func(ctx context.Context, sess *session.Session, socketPath string)
 }
 
 // Listener binds a TCP port and manages the lifecycle of a single reverse-shell
 // session, exposing it via a Unix domain socket.
 type Listener struct {
 	cfg     Config
-	session *session.Session
+	session atomic.Pointer[session.Session]
 	server  *socket.Server
 }
 
@@ -68,7 +74,7 @@ func New(cfg Config) (*Listener, error) {
 
 // Session returns the active session, or nil if Listen has not been called yet.
 func (l *Listener) Session() *session.Session {
-	return l.session
+	return l.session.Load()
 }
 
 // notify calls OnStatus if configured.
@@ -136,7 +142,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 		_ = conn.Close()
 		return fmt.Errorf("listener: create session: %w", err)
 	}
-	l.session = sess
+	l.session.Store(sess)
 
 	// Run detect — best-effort: partial metadata is acceptable.
 	// best-effort: detect errors (timeouts, partial) are non-fatal
@@ -159,6 +165,10 @@ func (l *Listener) Listen(ctx context.Context) error {
 	}()
 
 	l.notify("Session ready: %s", socketPath)
+
+	if l.cfg.OnSessionReady != nil {
+		go l.cfg.OnSessionReady(ctx, sess, socketPath)
+	}
 
 	// Block until the parent ctx is cancelled or the session closes.
 	select {
