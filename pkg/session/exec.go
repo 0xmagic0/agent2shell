@@ -74,6 +74,10 @@ func (s *Session) Exec(ctx context.Context, cmd string, timeout time.Duration) (
 	for {
 		select {
 		case line := <-ch:
+			// Skip the echo of the wrapped command itself (bash -i echoes input).
+			if strings.Contains(line, "echo") && strings.Contains(line, marker.MarkerPrefix) {
+				continue
+			}
 			if mid, ok := marker.ParseStartMarker(line); ok {
 				if mid == id {
 					started = true
@@ -95,6 +99,34 @@ func (s *Session) Exec(ctx context.Context, cmd string, timeout time.Duration) (
 						ExitCode:   code,
 						DurationMS: time.Since(startedAt).Milliseconds(),
 					}, nil
+				}
+				continue
+			}
+			// Handle markers appearing mid-line (command output
+			// without trailing newline merges with the marker).
+			if idx := strings.Index(line, marker.MarkerPrefix); idx > 0 {
+				prefix := line[:idx]
+				suffix := line[idx:]
+				if started {
+					buf = append(buf, prefix)
+				}
+				if mid, code, ok := marker.ParseEndMarker(suffix); ok && mid == id {
+					s.info.CommandsExecuted++
+					return &types.ExecResponse{
+						Output:     strings.Join(buf, "\n"),
+						ExitCode:   code,
+						DurationMS: time.Since(startedAt).Milliseconds(),
+					}, nil
+				}
+				if mid, ok := marker.ParseStartMarker(suffix); ok && mid == id {
+					started = true
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(timeout)
 				}
 				continue
 			}
