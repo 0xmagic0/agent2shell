@@ -17,7 +17,14 @@ func (l *Listener) buildHandler(socketPath string) socket.Handler {
 		switch req.Type {
 		case types.RunRequest:
 			timeout := time.Duration(req.Timeout) * time.Second
-			return sess.Exec(ctx, req.Command, timeout)
+			resp, err := sess.Exec(ctx, req.Command, timeout)
+			if err != nil {
+				return nil, err
+			}
+			if l.cfg.OnExec != nil {
+				l.cfg.OnExec(req.Command, resp)
+			}
+			return resp, nil
 
 		case types.StatusRequest:
 			return sess.Info(), nil

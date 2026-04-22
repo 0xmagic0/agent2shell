@@ -20,6 +20,7 @@ var runCmd = &cobra.Command{
 
 func init() {
 	runCmd.Flags().IntP("timeout", "t", 30, "command timeout in seconds")
+	runCmd.Flags().SetInterspersed(false)
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -47,7 +48,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return &exitError{code: 126}
 	}
 
-	fmt.Print(resp.Output)
+	output := resp.Output
+	if output != "" && !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+	fmt.Print(output)
 	return &exitError{code: clampExitCode(resp.ExitCode)}
 }
 

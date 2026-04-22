@@ -13,6 +13,7 @@ import (
 
 	"github.com/0xmagic0/agent2shell/pkg/session"
 	"github.com/0xmagic0/agent2shell/pkg/socket"
+	"github.com/0xmagic0/agent2shell/pkg/types"
 )
 
 // Config holds listener construction parameters.
@@ -37,6 +38,11 @@ type Config struct {
 
 	// OnOutput is called for each line arriving outside an active Exec.
 	OnOutput session.OutputCallback
+
+	// OnExec is called after a programmatic exec completes, with the command
+	// and its result. Used by catch to display [exec] output to the operator.
+	// Optional; nil means no display.
+	OnExec func(command string, resp *types.ExecResponse)
 
 	// OnStatus is called for lifecycle events (connection, session ready).
 	// Optional; nil means no status output.
@@ -178,6 +184,10 @@ func (l *Listener) Listen(ctx context.Context) error {
 
 	// Cancel the socket server and clean up.
 	srvCancel()
+
+	// Send exit to remote shell for clean shutdown.
+	// best-effort: session may already be closed or disconnected
+	_ = sess.WriteRaw([]byte("exit\n"))
 
 	// best-effort: session close error is non-recoverable here
 	_ = sess.Close()

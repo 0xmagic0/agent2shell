@@ -1,6 +1,11 @@
 package session
 
-import "bufio"
+import (
+	"bufio"
+	"strings"
+
+	"github.com/0xmagic0/agent2shell/pkg/marker"
+)
 
 // readLoop is the sole reader of the TCP connection. It runs in its own
 // goroutine from the moment New returns until the connection is closed.
@@ -28,6 +33,10 @@ func (s *Session) readLoop() {
 				return
 			}
 		} else if s.onOutput != nil {
+			// Skip marker lines — operator should not see protocol internals.
+			if strings.Contains(line, marker.MarkerPrefix) {
+				continue
+			}
 			s.onOutput(line)
 		}
 	}

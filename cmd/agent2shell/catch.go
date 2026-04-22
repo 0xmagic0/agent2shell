@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/0xmagic0/agent2shell/pkg/listener"
 	"github.com/0xmagic0/agent2shell/pkg/session"
+	"github.com/0xmagic0/agent2shell/pkg/types"
 	"github.com/spf13/cobra"
 )
 
@@ -129,6 +131,16 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 
 	cfg.OnOutput = func(line string) {
 		fmt.Fprintln(os.Stdout, line)
+	}
+
+	cfg.OnExec = func(command string, resp *types.ExecResponse) {
+		fmt.Fprintf(os.Stderr, "[exec] %s\n", command)
+		if resp.Output != "" {
+			fmt.Fprint(os.Stdout, resp.Output)
+			if !strings.HasSuffix(resp.Output, "\n") {
+				fmt.Fprintln(os.Stdout)
+			}
+		}
 	}
 
 	cfg.OnSessionReady = func(ctx context.Context, sess *session.Session, socketPath string) {
