@@ -128,7 +128,7 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 	}()
 
 	cfg.OnOutput = func(line string) {
-		fmt.Fprintln(os.Stderr, line)
+		fmt.Fprintln(os.Stdout, line)
 	}
 
 	cfg.OnSessionReady = func(ctx context.Context, sess *session.Session, socketPath string) {
