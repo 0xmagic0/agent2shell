@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 )
 
@@ -17,8 +18,21 @@ var Commit string
 // -ldflags -X main.BuildDate=<value>.
 var BuildDate string
 
+// exitError carries a specific exit code through Cobra's error return path.
+// Commands return this instead of calling os.Exit directly, so that deferred
+// cleanup runs and main resolves the code in one place.
+type exitError struct {
+	code int
+}
+
+func (e *exitError) Error() string { return "" }
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
+		var ee *exitError
+		if errors.As(err, &ee) {
+			os.Exit(ee.code)
+		}
 		// Cobra has already printed the error; exit 127 for CLI errors
 		// (unknown command, bad flag, etc.) to follow Unix conventions.
 		os.Exit(127)

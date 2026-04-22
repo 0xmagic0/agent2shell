@@ -149,3 +149,74 @@ func TestListenContextCancelAfterConnection(t *testing.T) {
 		t.Fatal("Listen did not return within 3s after context cancel")
 	}
 }
+
+// ─── Task 3.7 — OnStatus callback ─────────────────────────────────────────
+
+func TestListenOnStatus(t *testing.T) {
+	port, err := testutil.FreePort()
+	require.NoError(t, err)
+
+	sockPath := testutil.TempSocket(t)
+
+	var msgs []string
+	l, err := listener.New(listener.Config{
+		Host:           "127.0.0.1",
+		Port:           port,
+		SocketPath:     sockPath,
+		DefaultTimeout: 200 * time.Millisecond,
+		OnStatus: func(msg string) {
+			msgs = append(msgs, msg)
+		},
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- l.Listen(ctx) }()
+
+	// Connect a fake shell.
+	var shellConn net.Conn
+	require.Eventually(t, func() bool {
+		c, dialErr := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if dialErr == nil {
+			shellConn = c
+			return true
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond, "could not connect fake shell")
+	defer shellConn.Close()
+
+	// Wait for the Unix socket — signals detect is done and session is ready.
+	require.Eventually(t, func() bool {
+		c, dialErr := net.Dial("unix", sockPath)
+		if dialErr == nil {
+			c.Close()
+			return true
+		}
+		return false
+	}, 4*time.Second, 20*time.Millisecond, "unix socket did not appear")
+
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Listen did not return within 3s after context cancel")
+	}
+
+	// Verify status messages were collected.
+	var foundConnection, foundReady bool
+	for _, m := range msgs {
+		if len(m) >= len("Connection from") && m[:len("Connection from")] == "Connection from" {
+			foundConnection = true
+		}
+		if len(m) >= len("Session ready:") && m[:len("Session ready:")] == "Session ready:" {
+			foundReady = true
+		}
+	}
+	assert.True(t, foundConnection, "expected 'Connection from' message, got: %v", msgs)
+	assert.True(t, foundReady, "expected 'Session ready:' message, got: %v", msgs)
+}

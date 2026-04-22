@@ -36,6 +36,10 @@ type Config struct {
 
 	// OnOutput is called for each line arriving outside an active Exec.
 	OnOutput session.OutputCallback
+
+	// OnStatus is called for lifecycle events (connection, session ready).
+	// Optional; nil means no status output.
+	OnStatus func(msg string)
 }
 
 // Listener binds a TCP port and manages the lifecycle of a single reverse-shell
@@ -65,6 +69,13 @@ func New(cfg Config) (*Listener, error) {
 // Session returns the active session, or nil if Listen has not been called yet.
 func (l *Listener) Session() *session.Session {
 	return l.session
+}
+
+// notify calls OnStatus if configured.
+func (l *Listener) notify(format string, args ...any) {
+	if l.cfg.OnStatus != nil {
+		l.cfg.OnStatus(fmt.Sprintf(format, args...))
+	}
 }
 
 // Listen binds the TCP port, accepts exactly one connection, creates a session,
@@ -111,6 +122,8 @@ func (l *Listener) Listen(ctx context.Context) error {
 	// best-effort: already accepted one conn; error here is non-fatal
 	_ = ln.Close()
 
+	l.notify("Connection from %s", conn.RemoteAddr().String())
+
 	sess, err := session.New(session.Config{
 		Conn:           conn,
 		RemoteAddr:     conn.RemoteAddr().String(),
@@ -144,6 +157,8 @@ func (l *Listener) Listen(ctx context.Context) error {
 		// best-effort: serve errors during shutdown are non-fatal
 		_ = srv.Serve(srvCtx)
 	}()
+
+	l.notify("Session ready: %s", socketPath)
 
 	// Block until the parent ctx is cancelled or the session closes.
 	select {
