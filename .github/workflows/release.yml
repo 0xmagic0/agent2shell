@@ -37,7 +37,7 @@ jobs:
           LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildDate=${DATE}"
           go build -ldflags "${LDFLAGS}" -o "agent2shell-${GOOS}-${GOARCH}" ./cmd/agent2shell/
 
-      - uses: actions/upload-artifact@ea165f8d65b6db9a6b7e75b195db4f94fdbdf25c # v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: agent2shell-${{ matrix.goos }}-${{ matrix.goarch }}
           path: agent2shell-${{ matrix.goos }}-${{ matrix.goarch }}
