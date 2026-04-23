@@ -1,16 +1,5 @@
-# planning docs
+# Planning docs
 .planning/
-
-# Claude Code
-CLAUDE.md
-.claude/
-
-# GGA
-.gga
-AGENTS.md
-
-# atl
-.atl
 
 # Build artifacts
 /agent2shell
@@ -30,3 +19,59 @@ scripts/agent2shell-linux-amd64
 # OS
 .DS_Store
 Thumbs.db
+
+# AI Coding Assistants — Claude Code
+CLAUDE.md
+.claude/
+
+# AI Coding Assistants — Cursor
+.cursor/
+.cursorignore
+.cursorrules
+
+# AI Coding Assistants — Cline
+.cline/
+.clineignore
+.clinerules
+
+# AI Coding Assistants — Continue
+.continue/
+.continuerc.json
+
+# AI Coding Assistants — OpenCode
+.opencode/
+opencode.json
+
+# AI Coding Assistants — GitHub Copilot
+.copilot/
+.github/copilot/
+
+# AI Coding Assistants — Windsurf
+.windsurf/
+.windsurfignore
+
+# AI Coding Assistants — Aider
+.aider/
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v3/
+
+# AI Coding Assistants — RooCode
+.roo/
+.rooignore
+
+# AI Coding Assistants — Sourcegraph Cody
+.cody/
+
+# AI Coding Assistants — General
+.ai/
+
+# MCP
+.mcp/
+.mcp.json
+
+# GGA
+.gga
+
+# ATL
+.atl

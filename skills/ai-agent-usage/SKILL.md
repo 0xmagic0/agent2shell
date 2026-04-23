@@ -1,8 +1,8 @@
 ---
 name: agent2shell-ai-agent
 description: >
-  Instructions for AI coding agents (Claude Code, OpenCode, Cursor, etc.) to
-  interact with reverse shell sessions via agent2shell. Use this skill whenever
+  Instructions for AI coding agents to interact with reverse shell sessions
+  via agent2shell. Use this skill whenever
   you need to execute commands on a compromised target, upload or download files
   via a reverse shell, query session metadata, or run commands across multiple
   sessions. Copy this file to your agent's instruction directory (e.g.,

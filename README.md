@@ -175,10 +175,10 @@ See `scripts/ec2-create.sh` for automated EC2 lab setup.
 
 ## AI Agent Integration
 
-Copy `skills/ai-agent-usage.md` to your agent's instruction directory:
+Copy the skill to your agent's instruction directory:
 
 ```bash
-cp skills/ai-agent-usage.md ~/.claude/skills/
+cp -r skills/ai-agent-usage ~/.claude/skills/
 ```
 
 Claude Code (or any AI agent that reads skill files) will know how to use agent2shell autonomously — executing commands, uploading tools, downloading files, querying session state.
