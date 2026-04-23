@@ -16,7 +16,6 @@ import (
 	"github.com/0xmagic0/agent2shell/pkg/session"
 	"github.com/0xmagic0/agent2shell/pkg/types"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var catchCmd = &cobra.Command{
@@ -32,12 +31,13 @@ func init() {
 	catchCmd.Flags().DurationP("timeout", "t", 30*time.Second, "per-command execution timeout")
 	catchCmd.Flags().String("tag", "", "optional session label")
 	catchCmd.Flags().String("log", "", "JSONL log file for exec recording")
+	catchCmd.Flags().Bool("auto-upgrade", false, "attempt shell upgrade on connect")
 	rootCmd.AddCommand(catchCmd)
 }
 
 // buildCatchConfig reads flags from cmd and returns a listener.Config.
 // Extracted for testability — tests call this directly without touching TCP.
-// OnOutput and OnSessionReady are NOT set here; runCatch wires them after.
+// OnOutput, OnExec, and OnSessionReady are NOT set here; runCatch wires them.
 func buildCatchConfig(cmd *cobra.Command) (listener.Config, error) {
 	port, err := cmd.Flags().GetInt("port")
 	if err != nil {
@@ -59,11 +59,17 @@ func buildCatchConfig(cmd *cobra.Command) (listener.Config, error) {
 		return listener.Config{}, fmt.Errorf("catch: read tag flag: %w", err)
 	}
 
+	autoUpgrade, err := cmd.Flags().GetBool("auto-upgrade")
+	if err != nil {
+		return listener.Config{}, fmt.Errorf("catch: read auto-upgrade flag: %w", err)
+	}
+
 	cfg := listener.Config{
 		Host:           host,
 		Port:           port,
 		DefaultTimeout: timeout,
 		Tag:            tag,
+		AutoUpgrade:    autoUpgrade,
 		OnStatus: func(msg string) {
 			fmt.Fprintf(os.Stderr, "[*] %s\n", msg)
 		},
@@ -82,7 +88,6 @@ var interruptWindow = 2 * time.Second
 func handleInterrupt(sessRef *atomic.Pointer[session.Session], lastInterrupt *time.Time) bool {
 	now := time.Now()
 	if now.Sub(*lastInterrupt) < interruptWindow {
-		// Double-tap within the window — shut down.
 		return true
 	}
 	*lastInterrupt = now
@@ -120,15 +125,11 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 
 	var sessRef atomic.Pointer[session.Session]
 
-	// lastInterrupt lives at runCatch scope so both the signal goroutine (line
-	// mode) and the stdin read loop (raw mode) can share the double-tap state.
-	// Only one of the two paths is active at a time, so no concurrent access.
+	// lastInterrupt tracks the last Ctrl-C for double-tap detection.
+	// Only accessed from the signal goroutine — no concurrent access.
 	var lastInterrupt time.Time
 
 	sigCh := make(chan os.Signal, 1)
-	// In raw mode the terminal driver does not synthesise SIGINT from Ctrl-C,
-	// so we only need SIGTERM here. We still subscribe to os.Interrupt so that
-	// line-mode (piped stdin) keeps working unchanged.
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
@@ -142,7 +143,6 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 					cancel()
 					return
 				}
-				// SIGINT — only fires in line mode (non-terminal stdin).
 				if handleInterrupt(&sessRef, &lastInterrupt) {
 					cancel()
 					return
@@ -157,7 +157,7 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 	}
 
 	cfg.OnExec = func(command string, resp *types.ExecResponse) {
-		fmt.Fprintf(os.Stderr, "[agent] %s\n", command)
+		fmt.Fprintf(os.Stderr, "[a2s] %s\n", command)
 		if resp.Output != "" {
 			fmt.Fprint(os.Stdout, resp.Output)
 			if !strings.HasSuffix(resp.Output, "\n") {
@@ -166,26 +166,23 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Terminal state is managed at runCatch scope so Restore always runs
-	// when Listen returns — even if the stdin goroutine is still blocked
-	// on os.Stdin.Read().
-	stdinFd := int(os.Stdin.Fd())
-	var termState *term.State
-
 	cfg.OnSessionReady = func(ctx context.Context, sess *session.Session, socketPath string) {
 		sessRef.Store(sess)
-
-		if term.IsTerminal(stdinFd) {
-			oldState, err := term.MakeRaw(stdinFd)
-			if err == nil {
-				termState = oldState
-				runRawStdin(ctx, sess, &sessRef, &lastInterrupt, cancel)
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			line := scanner.Text()
+			fmt.Fprintf(os.Stderr, "[local] %s\n", line)
+			if err := sess.WriteRaw([]byte(line + "\n")); err != nil {
 				return
 			}
-			// best-effort: MakeRaw failed — fall through to line mode
 		}
-
-		runLineStdin(ctx, sess)
+		// best-effort: stdin read errors (scanner.Err) are non-actionable here —
+		// the goroutine is exiting anyway and the session is shutting down
 	}
 
 	l, err := listener.New(cfg)
@@ -196,93 +193,10 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(os.Stderr, "[*] Listening on %s:%d...\n", cfg.Host, cfg.Port)
 
 	if err := l.Listen(ctx); err != nil {
-		if termState != nil {
-			// best-effort: restore terminal before returning error
-			_ = term.Restore(stdinFd, termState)
-		}
 		return fmt.Errorf("catch: %w", err)
-	}
-
-	if termState != nil {
-		// best-effort: restore terminal on clean shutdown
-		_ = term.Restore(stdinFd, termState)
 	}
 
 	fmt.Fprintf(os.Stderr, "[*] Session closed.\n")
 
 	return nil
-}
-
-// runRawStdin reads stdin byte-by-byte in raw terminal mode and forwards bytes
-// to the remote shell. Ctrl-C (0x03) is handled via the double-tap logic
-// rather than relying on SIGINT (which raw mode suppresses).
-func runRawStdin(
-	ctx context.Context,
-	sess *session.Session,
-	sessRef *atomic.Pointer[session.Session],
-	lastInterrupt *time.Time,
-	cancel context.CancelFunc,
-) {
-	buf := make([]byte, 1024)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		n, err := os.Stdin.Read(buf)
-		if err != nil {
-			return
-		}
-
-		// Scan for Ctrl-C (0x03) and handle the double-tap logic.
-		// We process the buffer in one pass, collecting non-0x03 bytes and
-		// flushing them before handling each interrupt.
-		out := buf[:0]
-		for i := 0; i < n; i++ {
-			if buf[i] != 0x03 {
-				out = append(out, buf[i])
-				continue
-			}
-			// Flush any bytes accumulated before this 0x03.
-			if len(out) > 0 {
-				if err := sess.WriteRaw(out); err != nil {
-					return
-				}
-				out = out[:0]
-			}
-			if handleInterrupt(sessRef, lastInterrupt) {
-				cancel()
-				return
-			}
-			// \r\n because raw mode does not translate \n to \r\n.
-			fmt.Fprintf(os.Stderr, "\r\n[*] Ctrl-C sent to remote (press again within 2s to quit)\r\n")
-		}
-
-		if len(out) > 0 {
-			if err := sess.WriteRaw(out); err != nil {
-				return
-			}
-		}
-	}
-}
-
-// runLineStdin reads stdin line-by-line (bufio.Scanner) and forwards each
-// line to the remote shell. Used when stdin is not a terminal (piped input)
-// or when MakeRaw fails.
-func runLineStdin(ctx context.Context, sess *session.Session) {
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		if err := sess.WriteRaw([]byte(scanner.Text() + "\n")); err != nil {
-			return
-		}
-	}
-	// best-effort: stdin read errors (scanner.Err) are non-actionable here —
-	// the goroutine is exiting anyway and the session is shutting down
 }

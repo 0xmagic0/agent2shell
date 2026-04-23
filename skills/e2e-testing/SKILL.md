@@ -86,14 +86,14 @@ Check Session A's output after running socket API commands:
 tmux capture-pane -t <session-a> -p | tail -20
 ```
 
-You should see `[agent]` labels for each programmatic command:
+You should see `[a2s]` labels for socket API commands and `[local]` for operator-typed commands:
 
 ```
 [*] Connection from 127.0.0.1:54321
 [*] Session ready: /tmp/a2s-1.sock
-[agent] whoami
+[a2s] whoami
 tester
-[agent] uname -a
+[a2s] uname -a
 Linux 6.8.0-110-generic ...
 ```
 
