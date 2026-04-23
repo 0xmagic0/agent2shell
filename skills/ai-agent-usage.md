@@ -102,10 +102,10 @@ agent2shell broadcast --all --json id
 
 ### Target a specific session
 
-When multiple sessions are active, use `-s` to target a specific socket:
+When multiple sessions are active, use `-s` BEFORE the subcommand to target a specific socket:
 ```bash
-agent2shell run whoami -s /tmp/a2s-2.sock
-agent2shell status -s /tmp/a2s-2.sock
+agent2shell -s /tmp/a2s-2.sock run whoami
+agent2shell -s /tmp/a2s-2.sock status
 ```
 
 Without `-s`, agent2shell auto-discovers. If exactly one session exists, it's used automatically. If multiple exist, it returns an error asking you to specify.
@@ -164,11 +164,11 @@ When agent2shell runs on a remote server (e.g., EC2), forward the Unix socket to
 ssh -NL /tmp/a2s-remote.sock:/tmp/a2s-1.sock user@server-ip -i key.pem
 ```
 
-Then use agent2shell locally with `-s`:
+Then use agent2shell locally with `-s` before the subcommand:
 
 ```bash
-agent2shell run whoami -s /tmp/a2s-remote.sock
-agent2shell status -s /tmp/a2s-remote.sock
+agent2shell -s /tmp/a2s-remote.sock run whoami
+agent2shell -s /tmp/a2s-remote.sock status
 ```
 
 ## Error Handling
