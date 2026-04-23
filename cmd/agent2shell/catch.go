@@ -152,7 +152,17 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 		}
 	}()
 
+	// lastSent tracks the most recent operator-typed line so we can
+	// suppress the remote shell's echo of it (prompt + command).
+	var lastSent atomic.Value
+
 	cfg.OnOutput = func(line string) {
+		if sent, ok := lastSent.Load().(string); ok && sent != "" {
+			if strings.HasSuffix(line, sent) {
+				lastSent.Store("")
+				return
+			}
+		}
 		fmt.Fprintln(os.Stdout, line)
 	}
 
@@ -176,7 +186,7 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 			default:
 			}
 			line := scanner.Text()
-			fmt.Fprintf(os.Stderr, "[local] %s\n", line)
+			lastSent.Store(line)
 			if err := sess.WriteRaw([]byte(line + "\n")); err != nil {
 				return
 			}
