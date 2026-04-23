@@ -21,6 +21,8 @@ agent2shell catches reverse shell connections over TCP and exposes them as struc
 
 - `agent2shell` binary in PATH or accessible by absolute path
 - An active session (someone ran `agent2shell catch -p <port>` and a reverse shell connected)
+- Optional: `--log /path/to/file.jsonl` on catch to record all exec commands with timestamps
+- Optional: `--auto-upgrade` on catch to attempt sh → bash upgrade on connect
 - The Unix socket exists at `/tmp/a2s-N.sock` (auto-discovered) or a specific path via `-s`
 
 ## Commands
