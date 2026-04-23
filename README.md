@@ -217,6 +217,10 @@ make fmt                # gofmt + goimports
 - **Unix sockets for IPC.** Fast, no HTTP overhead, works with SSH forwarding.
 - **Double-marker protocol.** Start + end markers with UUID for reliable command boundaries.
 
+## Security Considerations
+
+agent2shell runs on operator-controlled infrastructure, not on the target. The Unix socket, temp files, and IPC all live on the operator-controlled machine.
+
 ## License
 
 [MIT](LICENSE)
