@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export AWS_PAGER=""
 
 REGION="${AWS_REGION:-us-east-1}"
 INSTANCE_TYPE="${A2S_INSTANCE_TYPE:-t3.micro}"
