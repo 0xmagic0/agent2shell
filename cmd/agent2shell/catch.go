@@ -166,21 +166,25 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Terminal state is managed at runCatch scope so Restore always runs
+	// when Listen returns — even if the stdin goroutine is still blocked
+	// on os.Stdin.Read().
+	stdinFd := int(os.Stdin.Fd())
+	var termState *term.State
+
 	cfg.OnSessionReady = func(ctx context.Context, sess *session.Session, socketPath string) {
 		sessRef.Store(sess)
 
-		fd := int(os.Stdin.Fd())
-		if term.IsTerminal(fd) {
-			oldState, err := term.MakeRaw(fd)
+		if term.IsTerminal(stdinFd) {
+			oldState, err := term.MakeRaw(stdinFd)
 			if err == nil {
-				defer term.Restore(fd, oldState) //nolint:errcheck // best-effort restore
+				termState = oldState
 				runRawStdin(ctx, sess, &sessRef, &lastInterrupt, cancel)
 				return
 			}
-			// MakeRaw failed — fall through to line mode
+			// best-effort: MakeRaw failed — fall through to line mode
 		}
 
-		// Line mode: piped stdin or MakeRaw failure fallback.
 		runLineStdin(ctx, sess)
 	}
 
@@ -192,7 +196,16 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(os.Stderr, "[*] Listening on %s:%d...\n", cfg.Host, cfg.Port)
 
 	if err := l.Listen(ctx); err != nil {
+		if termState != nil {
+			// best-effort: restore terminal before returning error
+			_ = term.Restore(stdinFd, termState)
+		}
 		return fmt.Errorf("catch: %w", err)
+	}
+
+	if termState != nil {
+		// best-effort: restore terminal on clean shutdown
+		_ = term.Restore(stdinFd, termState)
 	}
 
 	fmt.Fprintf(os.Stderr, "[*] Session closed.\n")
