@@ -16,7 +16,10 @@ AGENTS.md
 /agent2shell
 *.test
 *.out
-/bin/
+
+# EC2 lab ephemeral files
+scripts/.ec2-lab-state
+scripts/agent2shell-linux-amd64
 
 # IDE
 .idea/
