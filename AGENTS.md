@@ -6,8 +6,8 @@ Programmable reverse shell interface for AI agents. Go 1.22+, single static bina
 
 | Skill | Description |
 |-------|-------------|
-| [ai-agent-usage](skills/ai-agent-usage/SKILL.md) | How to use agent2shell to interact with reverse shell sessions |
-| [e2e-testing](skills/e2e-testing/SKILL.md) | E2E testing protocol with tmux sessions |
+| [reverse-shell-agent](skills/reverse-shell-agent/SKILL.md) | Teaches AI agents how to use agent2shell with reverse shells |
+| [dev-e2e-testing](skills/dev-e2e-testing/SKILL.md) | Development E2E testing protocol with tmux sessions |
 
 ## Code Review Rules
 

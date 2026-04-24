@@ -161,6 +161,11 @@ func (l *Listener) Listen(ctx context.Context) error {
 	}
 	l.session.Store(sess)
 
+	// Disable readline to prevent interactive shells (bash -i) from
+	// corrupting large data in commands (e.g. base64 file transfer chunks).
+	// best-effort: readline disable is non-critical; shell works without it
+	_, _ = sess.Exec(ctx, "set +o emacs 2>/dev/null; set +o vi 2>/dev/null", 0)
+
 	// Run detect — best-effort: partial metadata is acceptable.
 	// best-effort: detect errors (timeouts, partial) are non-fatal
 	_ = sess.Detect(ctx)

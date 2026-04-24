@@ -74,7 +74,7 @@ func (s *Session) Exec(ctx context.Context, cmd string, timeout time.Duration) (
 	for {
 		select {
 		case line := <-ch:
-			// Skip the echo of the wrapped command itself (bash -i echoes input).
+			// Skip the echo of the wrapped command itself (interactive shells echo input).
 			if strings.Contains(line, "echo") && strings.Contains(line, marker.MarkerPrefix) {
 				continue
 			}

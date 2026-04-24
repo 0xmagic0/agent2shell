@@ -1,12 +1,12 @@
 ---
-name: agent2shell-ai-agent
+name: agent2shell-reverse-shell-agent
 description: >
-  Instructions for AI coding agents to interact with reverse shell sessions
-  via agent2shell. Use this skill whenever
-  you need to execute commands on a compromised target, upload or download files
-  via a reverse shell, query session metadata, or run commands across multiple
-  sessions. Copy this file to your agent's instruction directory (e.g.,
-  .claude/skills/) to enable autonomous reverse shell interaction.
+  Teaches an AI agent how to use agent2shell to interact with reverse shell
+  sessions. Covers executing commands on compromised targets, uploading and
+  downloading files, querying session metadata, running commands across
+  multiple sessions, and handling long-running commands with streaming output.
+  Copy this skill to your agent's instruction directory to enable autonomous
+  reverse shell interaction via agent2shell.
 ---
 
 # agent2shell — AI Agent Skill
@@ -192,9 +192,20 @@ ls -la /tmp/a2s-*.sock
 agent2shell list
 ```
 
+## Long-Running Commands
+
+Output is streamed line-by-line by default. Use `-t` (seconds) to increase the timeout beyond the default 30s:
+
+```bash
+agent2shell push ./linpeas.sh /tmp/linpeas.sh
+agent2shell run "chmod +x /tmp/linpeas.sh"
+agent2shell run -t 300 "/tmp/linpeas.sh"
+```
+
 ## Important Notes
 
 - Commands are serialized — one at a time per session. Concurrent `run` calls queue.
+- Output is streamed line-by-line as it arrives. Use `--no-stream` to buffer all output and return it at the end.
 - File transfer uses base64 encoding over the shell — no separate channel. Large files are chunked.
 - The session detects the target's shell, OS, user, hostname, and architecture automatically on connect.
 - All output is clean — no terminal escape codes, no prompt pollution, no marker artifacts.

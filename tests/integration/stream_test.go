@@ -35,7 +35,7 @@ func TestStreamFullPath(t *testing.T) {
 	fs := dialFakeShell(t, addr)
 
 	// Drain detect probes.
-	fs.drainProbes(6)
+	fs.drainProbes(7)
 	waitForSocket(t, sockPath)
 
 	// Shell goroutine: respond to the streaming run request with 5 output lines.
@@ -79,7 +79,7 @@ func TestStreamTimeout_MidStream(t *testing.T) {
 	fs := dialFakeShell(t, addr)
 
 	// Drain detect probes.
-	fs.drainProbes(6)
+	fs.drainProbes(7)
 	waitForSocket(t, sockPath)
 
 	// Shell goroutine: send start marker + 2 partial lines, then stall.
@@ -128,7 +128,7 @@ func TestBufferedRunUnchanged(t *testing.T) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	fs := dialFakeShell(t, addr)
 
-	fs.drainProbes(6)
+	fs.drainProbes(7)
 	waitForSocket(t, sockPath)
 
 	shellDone := make(chan error, 1)
