@@ -7,7 +7,6 @@
 </p>
 <p align="center">
   <a href="https://github.com/0xmagic0/agent2shell/releases"><img alt="Release" src="https://img.shields.io/github/v/release/0xmagic0/agent2shell"></a>
-  <a href="https://github.com/0xmagic0/agent2shell/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/0xmagic0/agent2shell/ci.yml?label=CI"></a>
   <a href="https://github.com/0xmagic0/agent2shell"><img alt="Go Version" src="https://img.shields.io/github/go-mod/go-version/0xmagic0/agent2shell"></a>
   <a href="https://github.com/0xmagic0/agent2shell/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/0xmagic0/agent2shell"></a>
 </p>
