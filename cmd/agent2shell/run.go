@@ -38,7 +38,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	timeout, _ := cmd.Flags().GetInt("timeout")     // flag registered in init()
 	noStream, _ := cmd.Flags().GetBool("no-stream") // flag registered in init()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	// Context deadline must exceed the exec timeout so the client can receive
+	// the server's timeout response before the context cancels the socket read.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second+5*time.Second)
 	defer cancel()
 
 	if noStream {
