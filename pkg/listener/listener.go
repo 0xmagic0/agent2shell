@@ -202,8 +202,9 @@ func (l *Listener) Listen(ctx context.Context) error {
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
-		// best-effort: serve errors during shutdown are non-fatal
-		_ = srv.Serve(srvCtx)
+		if err := srv.Serve(srvCtx); err != nil && srvCtx.Err() == nil {
+			l.notify("Socket server stopped: %s", err)
+		}
 	}()
 
 	l.notify("Session ready: %s", socketPath)

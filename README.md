@@ -2,6 +2,8 @@
 
 Programmable reverse shell interface for AI agents and automation.
 
+![demo](assets/demo.gif)
+
 Catches reverse shell connections over TCP, exposes them as structured JSON APIs via Unix domain sockets. AI agents, scripts, and CLI tools can execute commands, transfer files, and query session metadata — clean output, exit codes, timeouts.
 
 ## Quick Start
