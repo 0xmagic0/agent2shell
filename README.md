@@ -2,8 +2,10 @@
   <img src="assets/logo-black.svg#gh-light-mode-only" width="40%">
   <img src="assets/logo-white.svg#gh-dark-mode-only" width="40%">
 </p>
-
-Programmable reverse shell interface for AI agents and automation.
+<p align="center">
+  <b>agent2shell</b> is a Go CLI interface between reverse shells and AI agents for AI-augmented security research and penetration testing.
+</p>
+<hr>
 
 ![demo](assets/demo.gif)
 
