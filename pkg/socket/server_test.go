@@ -153,6 +153,105 @@ func TestServer_SocketPermissions(t *testing.T) {
 		"expected 0600, got %v", info.Mode().Perm())
 }
 
+// ─── S1.3: StreamHandler dispatch ───────────────────────────────────────────
+
+// TestServer_StreamHandlerDispatch verifies that when a request has Stream ==
+// true and a StreamHandler is registered, the StreamHandler is called instead
+// of the regular Handler.
+func TestServer_StreamHandlerDispatch(t *testing.T) {
+	sockPath := testutil.TempSocket(t)
+
+	regularCalled := false
+	regularHandler := func(_ context.Context, _ *types.Request) (any, error) {
+		regularCalled = true
+		return types.ExecResponse{Output: "buffered"}, nil
+	}
+
+	streamHandlerCalled := make(chan struct{}, 1)
+	streamHandler := socket.StreamHandler(func(_ context.Context, req *types.Request, conn net.Conn) {
+		streamHandlerCalled <- struct{}{}
+		// Write a StreamEnd frame to satisfy the client.
+		frame := types.StreamFrame{Type: types.StreamEnd, ExitCode: 0, DurationMS: 1}
+		_ = socket.WriteFrame(conn, frame)
+	})
+
+	srv := socket.NewServer(sockPath, socket.Handler(regularHandler))
+	srv.SetStreamHandler(streamHandler)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() { srv.Serve(ctx) }() //nolint:errcheck
+
+	waitForSocket(t, sockPath)
+
+	// Send a streaming request.
+	conn, err := net.Dial("unix", sockPath)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	req := types.Request{Type: types.RunRequest, Command: "id", Stream: true}
+	require.NoError(t, socket.WriteFrame(conn, req))
+
+	// Read the StreamEnd frame back.
+	var frame types.StreamFrame
+	require.NoError(t, socket.ReadFrame(conn, &frame))
+	assert.Equal(t, types.StreamEnd, frame.Type)
+
+	// StreamHandler must have been called; regular handler must not.
+	select {
+	case <-streamHandlerCalled:
+		// good
+	case <-time.After(2 * time.Second):
+		t.Fatal("StreamHandler was not called within 2s")
+	}
+	assert.False(t, regularCalled, "regular handler must not be called for streaming request")
+}
+
+// TestServer_NonStreamingRequestUsesRegularHandler verifies that a request
+// with Stream == false still goes through the regular Handler.
+func TestServer_NonStreamingRequestUsesRegularHandler(t *testing.T) {
+	sockPath := testutil.TempSocket(t)
+
+	regularCalled := make(chan struct{}, 1)
+	regularHandler := func(_ context.Context, _ *types.Request) (any, error) {
+		regularCalled <- struct{}{}
+		return types.ExecResponse{Output: "buffered"}, nil
+	}
+
+	streamHandlerCalled := false
+	streamHandler := socket.StreamHandler(func(_ context.Context, _ *types.Request, _ net.Conn) {
+		streamHandlerCalled = true
+	})
+
+	srv := socket.NewServer(sockPath, socket.Handler(regularHandler))
+	srv.SetStreamHandler(streamHandler)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() { srv.Serve(ctx) }() //nolint:errcheck
+
+	waitForSocket(t, sockPath)
+
+	payload := dialAndExchange(t, sockPath, types.Request{
+		Type:    types.RunRequest,
+		Command: "id",
+	})
+
+	var got types.ExecResponse
+	require.NoError(t, json.Unmarshal(payload, &got))
+	assert.Equal(t, "buffered", got.Output)
+
+	select {
+	case <-regularCalled:
+		// good
+	case <-time.After(2 * time.Second):
+		t.Fatal("regular handler was not called within 2s")
+	}
+	assert.False(t, streamHandlerCalled, "stream handler must not be called for non-streaming request")
+}
+
 // S4.7 — Graceful shutdown: cancelling context stops the server without blocking.
 func TestServer_GracefulShutdown(t *testing.T) {
 	sockPath := testutil.TempSocket(t)

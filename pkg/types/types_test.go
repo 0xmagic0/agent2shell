@@ -237,3 +237,98 @@ func TestRequest_OmitemptyFields(t *testing.T) {
 	assert.NotContains(t, s, `"command"`)
 	assert.NotContains(t, s, `"timeout"`)
 }
+
+// ─── S1.1: StreamFrame round-trip ────────────────────────────────────────────
+
+// TestStreamFrame_LineRoundTrip verifies a "line" frame marshals and unmarshals
+// correctly, and that end-only fields are absent when zero.
+func TestStreamFrame_LineRoundTrip(t *testing.T) {
+	in := types.StreamFrame{
+		Type: types.StreamLine,
+		Data: "hello world",
+	}
+
+	data, err := json.Marshal(in)
+	require.NoError(t, err)
+
+	var got types.StreamFrame
+	require.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, in, got)
+
+	// omitempty: end-only fields must be absent in the JSON.
+	s := string(data)
+	assert.NotContains(t, s, `"exit_code"`)
+	assert.NotContains(t, s, `"duration_ms"`)
+	assert.NotContains(t, s, `"error"`)
+}
+
+// TestStreamFrame_EndRoundTrip verifies a "end" frame with all fields marshals
+// correctly and that Data is absent.
+func TestStreamFrame_EndRoundTrip(t *testing.T) {
+	in := types.StreamFrame{
+		Type:       types.StreamEnd,
+		ExitCode:   42,
+		DurationMS: 1234,
+		Error:      "exec timeout",
+	}
+
+	data, err := json.Marshal(in)
+	require.NoError(t, err)
+
+	var got types.StreamFrame
+	require.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, in, got)
+
+	s := string(data)
+	assert.NotContains(t, s, `"data"`)
+}
+
+// TestStreamFrame_EndNoError verifies a successful end frame omits the error
+// field when empty.
+func TestStreamFrame_EndNoError(t *testing.T) {
+	in := types.StreamFrame{
+		Type:       types.StreamEnd,
+		ExitCode:   0,
+		DurationMS: 50,
+	}
+
+	data, err := json.Marshal(in)
+	require.NoError(t, err)
+
+	s := string(data)
+	assert.NotContains(t, s, `"error"`)
+	assert.NotContains(t, s, `"data"`)
+}
+
+// TestStreamFrameType_Constants verifies the constant values.
+func TestStreamFrameType_Constants(t *testing.T) {
+	assert.Equal(t, types.StreamFrameType("line"), types.StreamLine)
+	assert.Equal(t, types.StreamFrameType("end"), types.StreamEnd)
+}
+
+// TestRequest_StreamField verifies that Stream bool is included when true and
+// omitted when false (omitempty).
+func TestRequest_StreamField(t *testing.T) {
+	t.Run("stream true is present in JSON", func(t *testing.T) {
+		req := types.Request{Type: types.RunRequest, Command: "id", Stream: true}
+		data, err := json.Marshal(req)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `"stream":true`)
+	})
+
+	t.Run("stream false is absent in JSON (omitempty)", func(t *testing.T) {
+		req := types.Request{Type: types.RunRequest, Command: "id"}
+		data, err := json.Marshal(req)
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), `"stream"`)
+	})
+
+	t.Run("round-trip with stream true", func(t *testing.T) {
+		in := types.Request{Type: types.RunRequest, Command: "ls", Timeout: 10, Stream: true}
+		data, err := json.Marshal(in)
+		require.NoError(t, err)
+		var got types.Request
+		require.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, in, got)
+	})
+}

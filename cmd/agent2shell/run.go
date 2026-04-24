@@ -20,6 +20,7 @@ var runCmd = &cobra.Command{
 
 func init() {
 	runCmd.Flags().IntP("timeout", "t", 30, "command timeout in seconds")
+	runCmd.Flags().Bool("no-stream", false, "disable streaming output (buffer and print all at once)")
 	runCmd.Flags().SetInterspersed(false)
 	rootCmd.AddCommand(runCmd)
 }
@@ -33,11 +34,34 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	command := strings.Join(args, " ")
 
-	timeout, _ := cmd.Flags().GetInt("timeout") // flag registered in init()
+	timeout, _ := cmd.Flags().GetInt("timeout")     // flag registered in init()
+	noStream, _ := cmd.Flags().GetBool("no-stream") // flag registered in init()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
+	if noStream {
+		return runBuffered(ctx, socketPath, command, timeout)
+	}
+	return runStreaming(ctx, socketPath, command, timeout)
+}
+
+// runStreaming executes command via client.StreamRun, printing each line to
+// stdout as it arrives.
+func runStreaming(ctx context.Context, socketPath, command string, timeout int) error {
+	resp, err := client.StreamRun(ctx, socketPath, command, timeout, func(line string) {
+		fmt.Println(line)
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		return &exitError{code: 126}
+	}
+	return &exitError{code: clampExitCode(resp.ExitCode)}
+}
+
+// runBuffered executes command via client.Run, printing the complete output
+// after the command returns.
+func runBuffered(ctx context.Context, socketPath, command string, timeout int) error {
 	resp, err := client.Run(ctx, socketPath, command, timeout)
 	if err != nil {
 		prefix := "error"

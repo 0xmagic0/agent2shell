@@ -21,6 +21,43 @@ const (
 	KillRequest RequestType = "kill"
 )
 
+// StreamFrameType is the discriminator value for streaming output frames.
+type StreamFrameType string
+
+const (
+	// StreamLine identifies a frame carrying one line of command output.
+	StreamLine StreamFrameType = "line"
+
+	// StreamEnd identifies the final frame in a streaming response, carrying
+	// completion metadata such as exit code, duration, and an optional error.
+	StreamEnd StreamFrameType = "end"
+)
+
+// StreamFrame is the JSON envelope used during streaming execution. Each frame
+// carries a Type discriminator and type-specific fields.
+//
+// For StreamLine frames: Data contains the output line; other fields are zero.
+// For StreamEnd frames: ExitCode, DurationMS, and Error (optional) are set;
+// Data is empty.
+type StreamFrame struct {
+	// Type identifies whether this is a "line" or "end" frame.
+	Type StreamFrameType `json:"type"`
+
+	// Data is the output line. Only set on StreamLine frames.
+	Data string `json:"data,omitempty"`
+
+	// ExitCode is the process exit code. Only set on StreamEnd frames.
+	ExitCode int `json:"exit_code,omitempty"`
+
+	// DurationMS is the wall-clock execution time in milliseconds.
+	// Only set on StreamEnd frames.
+	DurationMS int64 `json:"duration_ms,omitempty"`
+
+	// Error describes a transport or timeout failure. Only set on StreamEnd
+	// frames when an error occurred. Empty string on success.
+	Error string `json:"error,omitempty"`
+}
+
 // Request is the JSON message sent by a client to the Unix socket.
 type Request struct {
 	// Type identifies the operation to perform.
@@ -32,6 +69,11 @@ type Request struct {
 	// Timeout is the maximum execution time in seconds. Zero means no limit.
 	// Only used with RunRequest.
 	Timeout int `json:"timeout,omitempty"`
+
+	// Stream, when true, requests line-by-line streaming output instead of a
+	// single buffered ExecResponse. Defaults to false; old clients omit this
+	// field and receive the unmodified buffered response.
+	Stream bool `json:"stream,omitempty"`
 }
 
 // ExecResponse is the JSON message returned after a command execution.

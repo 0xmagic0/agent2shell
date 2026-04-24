@@ -20,14 +20,21 @@ const DefaultReadTimeout = 30 * time.Second
 // A non-nil error causes the server to write {"error": "message"} instead.
 type Handler func(ctx context.Context, req *types.Request) (any, error)
 
+// StreamHandler is the callback invoked by Server for streaming requests
+// (Request.Stream == true). The handler receives the raw net.Conn and is
+// responsible for writing all response frames directly. The connection is
+// closed by the server after StreamHandler returns.
+type StreamHandler func(ctx context.Context, req *types.Request, conn net.Conn)
+
 // Server listens on a Unix domain socket and dispatches incoming requests to
 // a Handler. Each connection is handled in its own goroutine. The server
 // accepts exactly one request per connection, writes one response, then closes
 // the connection.
 type Server struct {
-	path        string
-	handler     Handler
-	ReadTimeout time.Duration
+	path          string
+	handler       Handler
+	streamHandler StreamHandler
+	ReadTimeout   time.Duration
 }
 
 // NewServer creates a Server that will bind to path and dispatch to handler.
@@ -38,6 +45,14 @@ func NewServer(path string, handler Handler) *Server {
 		handler:     handler,
 		ReadTimeout: DefaultReadTimeout,
 	}
+}
+
+// SetStreamHandler registers h as the handler for streaming requests. When a
+// request with Stream == true arrives, h is called instead of the regular
+// Handler. The read deadline is cleared before h is called so long-running
+// commands do not time out at the transport layer.
+func (s *Server) SetStreamHandler(h StreamHandler) {
+	s.streamHandler = h
 }
 
 // Serve binds the Unix domain socket, sets permissions to 0600, and accepts
@@ -127,6 +142,15 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 	if err := ReadFrame(conn, &req); err != nil {
 		// best-effort: conn closing anyway after deferred Close
 		_ = WriteFrame(conn, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Dispatch streaming requests to the StreamHandler when one is registered.
+	if req.Stream && s.streamHandler != nil {
+		// Clear read deadline — streaming commands may run for a long time.
+		// best-effort: deadline clear error is non-fatal
+		_ = conn.SetReadDeadline(time.Time{})
+		s.streamHandler(ctx, &req, conn)
 		return
 	}
 

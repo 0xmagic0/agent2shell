@@ -191,6 +191,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 	// Build and start the Unix domain socket server.
 	handler := l.buildHandler(socketPath)
 	srv := socket.NewServer(socketPath, handler)
+	srv.SetStreamHandler(l.buildStreamHandler(socketPath))
 	l.server = srv
 
 	serverDone := make(chan struct{})

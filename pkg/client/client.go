@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/0xmagic0/agent2shell/pkg/socket"
 	"github.com/0xmagic0/agent2shell/pkg/types"
@@ -117,6 +118,71 @@ func List(ctx context.Context, socketPath string) (*types.SessionsResponse, erro
 		return &resp, fmt.Errorf("client: list on %s: %s", socketPath, resp.Error)
 	}
 	return &resp, nil
+}
+
+// StreamRun asks the session at socketPath to execute command with the given
+// timeout in seconds (0 = no limit) using the streaming path. It sends a
+// RunRequest with Stream == true, reads StreamFrame values in a loop, calls
+// onLine for each StreamLine frame, and returns an *ExecResponse synthesized
+// from the StreamEnd frame.
+//
+// Returns nil, error on transport failure or when the server reports an exec
+// error (StreamEnd.Error != ""). The returned *ExecResponse carries Output as
+// all received lines joined by newline, plus ExitCode and DurationMS from the
+// StreamEnd frame.
+//
+// client.Run remains unchanged; StreamRun is the opt-in streaming variant.
+func StreamRun(ctx context.Context, socketPath, command string, timeout int, onLine func(string)) (*types.ExecResponse, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return nil, fmt.Errorf("client: stream dial %s: %w", socketPath, err)
+	}
+	defer conn.Close()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			return nil, fmt.Errorf("client: stream set deadline: %w", err)
+		}
+	}
+
+	req := &types.Request{
+		Type:    types.RunRequest,
+		Command: command,
+		Timeout: timeout,
+		Stream:  true,
+	}
+	if err := socket.WriteFrame(conn, req); err != nil {
+		return nil, fmt.Errorf("client: stream write request: %w", err)
+	}
+
+	var lines []string
+
+	for {
+		var frame types.StreamFrame
+		if err := socket.ReadFrame(conn, &frame); err != nil {
+			return nil, fmt.Errorf("client: stream read frame: %w", err)
+		}
+
+		switch frame.Type {
+		case types.StreamLine:
+			onLine(frame.Data)
+			lines = append(lines, frame.Data)
+
+		case types.StreamEnd:
+			if frame.Error != "" {
+				return nil, fmt.Errorf("client: stream on %s: %s", socketPath, frame.Error)
+			}
+			return &types.ExecResponse{
+				Output:     strings.Join(lines, "\n"),
+				ExitCode:   frame.ExitCode,
+				DurationMS: frame.DurationMS,
+			}, nil
+
+		default:
+			return nil, fmt.Errorf("client: stream on %s: unexpected frame type %q", socketPath, frame.Type)
+		}
+	}
 }
 
 // Kill sends a kill request to the session at socketPath, asking it to
