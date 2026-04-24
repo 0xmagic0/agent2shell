@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -54,7 +55,7 @@ func runStreaming(ctx context.Context, socketPath, command string, timeout int) 
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
-		return &exitError{code: 126}
+		return &exitError{code: exitCodeForError(err)}
 	}
 	return &exitError{code: clampExitCode(resp.ExitCode)}
 }
@@ -69,7 +70,7 @@ func runBuffered(ctx context.Context, socketPath, command string, timeout int) e
 			prefix = "exec error"
 		}
 		fmt.Fprintf(os.Stderr, "%s: %s\n", prefix, err)
-		return &exitError{code: 126}
+		return &exitError{code: exitCodeForError(err)}
 	}
 
 	output := resp.Output
@@ -78,6 +79,15 @@ func runBuffered(ctx context.Context, socketPath, command string, timeout int) e
 	}
 	fmt.Print(output)
 	return &exitError{code: clampExitCode(resp.ExitCode)}
+}
+
+// exitCodeForError returns 124 for timeout errors and 126 for everything else.
+// 124 matches GNU coreutils `timeout` convention.
+func exitCodeForError(err error) int {
+	if errors.Is(err, client.ErrExecTimeout) {
+		return 124
+	}
+	return 126
 }
 
 // clampExitCode maps remote exit codes to the agent2shell exit code contract:

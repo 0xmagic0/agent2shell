@@ -75,7 +75,7 @@ Output is streamed line-by-line as it arrives. For long-running commands, increa
 agent2shell run -t 300 "/tmp/linpeas.sh"
 ```
 
-Exit codes 0-125 are forwarded from the remote command. Exit 126 means agent2shell error.
+Exit codes 0-125 are forwarded from the remote command. Exit 124 means timeout, exit 126 means agent2shell error.
 
 ### status
 

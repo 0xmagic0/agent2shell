@@ -6,6 +6,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -13,6 +14,18 @@ import (
 	"github.com/0xmagic0/agent2shell/pkg/socket"
 	"github.com/0xmagic0/agent2shell/pkg/types"
 )
+
+// ErrExecTimeout indicates the remote command exceeded its timeout.
+var ErrExecTimeout = errors.New("exec timeout")
+
+// wrapRemoteError wraps server-reported error strings, mapping known
+// conditions to sentinel errors for errors.Is detection.
+func wrapRemoteError(socketPath, msg string) error {
+	if msg == ErrExecTimeout.Error() {
+		return fmt.Errorf("client: run on %s: %w", socketPath, ErrExecTimeout)
+	}
+	return fmt.Errorf("client: run on %s: %s", socketPath, msg)
+}
 
 // do connects to socketPath, sends req, and returns the raw JSON response.
 func do(ctx context.Context, socketPath string, req *types.Request) (json.RawMessage, error) {
@@ -79,7 +92,7 @@ func Run(ctx context.Context, socketPath, command string, timeout int) (*types.E
 	// ExecResponse.Error unmarshal into resp.Error. Return the partial struct
 	// so callers can inspect any output that was captured before the error.
 	if resp.Error != "" {
-		return &resp, fmt.Errorf("client: run on %s: %s", socketPath, resp.Error)
+		return &resp, wrapRemoteError(socketPath, resp.Error)
 	}
 
 	return &resp, nil
@@ -171,7 +184,7 @@ func StreamRun(ctx context.Context, socketPath, command string, timeout int, onL
 
 		case types.StreamEnd:
 			if frame.Error != "" {
-				return nil, fmt.Errorf("client: stream on %s: %s", socketPath, frame.Error)
+				return nil, wrapRemoteError(socketPath, frame.Error)
 			}
 			return &types.ExecResponse{
 				Output:     strings.Join(lines, "\n"),

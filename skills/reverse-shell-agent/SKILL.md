@@ -176,7 +176,8 @@ agent2shell -s /tmp/a2s-remote.sock status
 ## Error Handling
 
 - Exit code **0-125**: forwarded from the remote command
-- Exit code **126**: agent2shell error (timeout, no session, connection refused)
+- Exit code **124**: command timed out (increase with `-t`)
+- Exit code **126**: agent2shell error (no session, connection refused)
 - Exit code **127**: CLI error (bad flags, unknown command)
 
 If a command times out (default 30s), increase with `-t`:
@@ -200,6 +201,12 @@ Output is streamed line-by-line by default. Use `-t` (seconds) to increase the t
 agent2shell push ./linpeas.sh /tmp/linpeas.sh
 agent2shell run "chmod +x /tmp/linpeas.sh"
 agent2shell run -t 300 "/tmp/linpeas.sh"
+```
+
+For network scanning, wrap each connection with `timeout` to avoid hanging on unresponsive hosts:
+
+```bash
+agent2shell run -t 60 'for i in $(seq 1 254); do timeout 2 bash -c "echo >/dev/tcp/10.0.0.$i/80 2>/dev/null" && echo "10.0.0.$i:80 OPEN"; done'
 ```
 
 ## Important Notes
