@@ -1,4 +1,7 @@
-# agent2shell
+<p align="center">
+  <img src="assets/logo-black.svg#gh-light-mode-only" width="40%">
+  <img src="assets/logo-white.svg#gh-dark-mode-only" width="40%">
+</p>
 
 Programmable reverse shell interface for AI agents and automation.
 
@@ -221,7 +224,6 @@ make fmt                # gofmt + goimports
 
 - **Not a C2 framework.** A shell interface. Catches shells, makes them programmable.
 - **Not an AI agent.** A clean bridge. Any agent connects through the socket.
-- **No embedded transport security.** Use SSH tunnels or VPNs.
 - **Unix sockets for IPC.** Fast, no HTTP overhead, works with SSH forwarding.
 - **Double-marker protocol.** Start + end markers with UUID for reliable command boundaries.
 
