@@ -186,7 +186,13 @@ agent2shell -s /tmp/a2s-ec2.sock push ./tool /tmp/tool
 
 ## Skills
 
-Skills are instruction files that teach AI coding agents how to use agent2shell. Copy them to your agent's skill directory (e.g., `.claude/skills/` for Claude Code).
+Skills are instruction files that teach AI coding agents how to use agent2shell. Copy them to your agent's skill directory:
+
+```bash
+cp -r skills/reverse-shell-agent ~/.claude/skills/     # Claude Code
+cp -r skills/reverse-shell-agent ~/.opencode/skills/    # OpenCode
+cp -r skills/reverse-shell-agent ~/.gemini/skills/      # Gemini CLI
+```
 
 | Skill | Purpose |
 |-------|---------|
