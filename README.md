@@ -38,15 +38,10 @@ agent2shell pull /etc/shadow ./loot/shadow
 
 ## Architecture
 
-```
-Target (reverse shell) -> TCP:4444 -> agent2shell catch -> Unix socket -> AI agent / CLI
-                                            |
-                                      /tmp/a2s-1.sock
-                                            |
-                                      agent2shell run
-                                      agent2shell status
-                                      agent2shell push/pull
-```
+<p align="center">
+  <img src="assets/architecture-planes-black.svg#gh-light-mode-only" width="80%">
+  <img src="assets/architecture-planes-white.svg#gh-dark-mode-only" width="80%">
+</p>
 
 The operator runs `catch` to listen for a reverse shell. On connection, a Unix domain socket is created. Any process on the same machine can send commands through the socket.
 
