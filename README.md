@@ -14,13 +14,14 @@
 
 ![demo](assets/demo.gif)
 
-Catches reverse shell connections over TCP, exposes them as structured JSON APIs via Unix domain sockets. AI agents, scripts, and CLI tools can execute commands, transfer files, and query session metadata — clean output, exit codes, timeouts.
+Catches reverse shell connections over TCP, exposes them as structured JSON APIs via Unix domain sockets. AI agents, scripts, and CLI tools can execute commands, transfer files, and query session metadata. It provides clean output, exit codes, and timeouts.
 
 ## Quick Start
 
 ```bash
 # Build
 make build
+sudo mv ./agent2shell /usr/local/bin/
 
 # Terminal 1: catch a reverse shell
 agent2shell catch -p 4444
@@ -59,12 +60,12 @@ agent2shell catch -p 4444 --auto-upgrade
 ```
 
 Flags:
-- `-p, --port` — TCP port (default 4444)
-- `-H, --host` — bind address (default 0.0.0.0)
-- `-t, --timeout` — per-command timeout (default 30s)
-- `--tag` — session label for broadcast/list filtering
-- `--log` — JSONL file for recording all exec commands
-- `--auto-upgrade` — attempt sh → bash upgrade on connect
+- `-p, --port` TCP port (default 4444)
+- `-H, --host` bind address (default 0.0.0.0)
+- `-t, --timeout` per-command timeout (default 30s)
+- `--tag` session label for broadcast/list filtering
+- `--log` JSONL file for recording all exec commands
+- `--auto-upgrade` attempt sh → bash upgrade on connect
 
 ### run
 
@@ -178,7 +179,7 @@ Forward the Unix socket over SSH to use agent2shell locally as if the session we
 # On your laptop: forward the Unix socket
 ssh -NL /tmp/a2s-ec2.sock:/tmp/a2s-1.sock -i key.pem user@EC2_IP
 
-# Use agent2shell locally — same commands, remote session
+# Use agent2shell locally, same commands, remote session
 agent2shell -s /tmp/a2s-ec2.sock run whoami
 agent2shell -s /tmp/a2s-ec2.sock status
 agent2shell -s /tmp/a2s-ec2.sock push ./tool /tmp/tool
@@ -196,7 +197,7 @@ cp -r skills/reverse-shell-agent ~/.gemini/skills/      # Gemini CLI
 
 | Skill | Purpose |
 |-------|---------|
-| [reverse-shell-agent](skills/reverse-shell-agent/SKILL.md) | Teaches an AI agent how to use agent2shell — executing commands, transferring files, querying sessions, handling timeouts. Copy this to your agent to enable autonomous reverse shell interaction. |
+| [reverse-shell-agent](skills/reverse-shell-agent/SKILL.md) | Teaches an AI agent how to use agent2shell. Executing commands, transferring files, querying sessions, handling timeouts. Copy this to your agent to enable autonomous reverse shell interaction. |
 | [dev-e2e-testing](skills/dev-e2e-testing/SKILL.md) | Development testing protocol. Provides a tmux-based setup to test agent2shell end-to-end locally after adding features or fixing bugs. For contributors, not end users. |
 
 ## Scripts
@@ -215,7 +216,7 @@ Infrastructure automation for development and testing.
 git clone https://github.com/0xmagic0/agent2shell.git
 cd agent2shell
 make build
-# Binary: ./agent2shell
+sudo mv ./agent2shell /usr/local/bin/
 
 # Or go install
 go install github.com/0xmagic0/agent2shell/cmd/agent2shell@latest
