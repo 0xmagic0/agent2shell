@@ -86,7 +86,7 @@ func TestStreamRun_HappyPath(t *testing.T) {
 	sockPath := setupStreamServer(t, frames)
 
 	var got []string
-	resp, err := client.StreamRun(context.Background(), sockPath, "echo", 5, func(line string) {
+	resp, err := client.StreamRun(context.Background(), sockPath, "echo", 5, "", func(line string) {
 		got = append(got, line)
 	})
 
@@ -109,7 +109,7 @@ func TestStreamRun_EmptyOutput(t *testing.T) {
 	sockPath := setupStreamServer(t, frames)
 
 	callCount := 0
-	resp, err := client.StreamRun(context.Background(), sockPath, "true", 5, func(string) {
+	resp, err := client.StreamRun(context.Background(), sockPath, "true", 5, "", func(string) {
 		callCount++
 	})
 
@@ -130,7 +130,7 @@ func TestStreamRun_UnknownFrameType(t *testing.T) {
 	sockPath := setupStreamServer(t, frames)
 
 	var gotLines []string
-	resp, err := client.StreamRun(context.Background(), sockPath, "cmd", 5, func(line string) {
+	resp, err := client.StreamRun(context.Background(), sockPath, "cmd", 5, "", func(line string) {
 		gotLines = append(gotLines, line)
 	})
 
@@ -172,7 +172,7 @@ func TestStreamRun_ConnectionDropMidStream(t *testing.T) {
 	waitForUnixSocket(t, sockPath)
 
 	var gotLines []string
-	resp, err := client.StreamRun(context.Background(), sockPath, "cmd", 5, func(line string) {
+	resp, err := client.StreamRun(context.Background(), sockPath, "cmd", 5, "", func(line string) {
 		gotLines = append(gotLines, line)
 	})
 
@@ -195,7 +195,7 @@ func TestStreamRun_ServerError(t *testing.T) {
 	sockPath := setupStreamServer(t, frames)
 
 	var got []string
-	resp, err := client.StreamRun(context.Background(), sockPath, "sleep", 5, func(line string) {
+	resp, err := client.StreamRun(context.Background(), sockPath, "sleep", 5, "", func(line string) {
 		got = append(got, line)
 	})
 
@@ -235,7 +235,7 @@ func TestStreamRun_SendsStreamTrueRequest(t *testing.T) {
 
 	waitForUnixSocket(t, sockPath)
 
-	_, _ = client.StreamRun(context.Background(), sockPath, "id", 5, func(string) {})
+	_, _ = client.StreamRun(context.Background(), sockPath, "id", 5, "", func(string) {})
 
 	req := <-reqCh
 	assert.True(t, req.Stream, "StreamRun must send Request.Stream == true")

@@ -34,7 +34,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	exec := func(ctx context.Context, command string, timeout int) (*types.ExecResponse, error) {
-		return client.Run(ctx, socketPath, command, timeout)
+		return client.Run(ctx, socketPath, command, timeout, "")
 	}
 
 	ctx := context.Background()

@@ -29,7 +29,7 @@ func init() {
 // socket.
 func buildPushExecFunc(socketPath string) transfer.ExecFunc {
 	return func(ctx context.Context, cmd string, timeout int) (*types.ExecResponse, error) {
-		return client.Run(ctx, socketPath, cmd, timeout)
+		return client.Run(ctx, socketPath, cmd, timeout, "")
 	}
 }
 

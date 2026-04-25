@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xmagic0/agent2shell/pkg/marker"
 	"github.com/0xmagic0/agent2shell/pkg/recorder"
 	"github.com/0xmagic0/agent2shell/pkg/socket"
 	"github.com/0xmagic0/agent2shell/pkg/types"
@@ -20,7 +21,11 @@ func (l *Listener) buildHandler(socketPath string) socket.Handler {
 		switch req.Type {
 		case types.RunRequest:
 			timeout := time.Duration(req.Timeout) * time.Second
-			resp, execErr := sess.Exec(ctx, req.Command, timeout)
+			cmd := req.Command
+			if req.Stdin != "" {
+				cmd = marker.WrapStdinCommand(cmd, req.Stdin)
+			}
+			resp, execErr := sess.Exec(ctx, cmd, timeout)
 			if execErr != nil {
 				if l.cfg.Recorder != nil {
 					// best-effort: recording errors must not fail the request
@@ -82,6 +87,11 @@ func (l *Listener) buildStreamHandler(socketPath string) socket.StreamHandler {
 		sess := l.session.Load()
 		timeout := time.Duration(req.Timeout) * time.Second
 
+		cmd := req.Command
+		if req.Stdin != "" {
+			cmd = marker.WrapStdinCommand(cmd, req.Stdin)
+		}
+
 		var lines []string
 
 		onLine := func(line string) {
@@ -94,7 +104,7 @@ func (l *Listener) buildStreamHandler(socketPath string) socket.StreamHandler {
 			})
 		}
 
-		exitCode, durationMS, execErr := sess.ExecStream(ctx, req.Command, timeout, onLine)
+		exitCode, durationMS, execErr := sess.ExecStream(ctx, cmd, timeout, onLine)
 
 		endFrame := types.StreamFrame{
 			Type:       types.StreamEnd,
