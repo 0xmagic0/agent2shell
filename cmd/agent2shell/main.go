@@ -5,6 +5,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 )
 
@@ -33,8 +34,7 @@ func main() {
 		if errors.As(err, &ee) {
 			os.Exit(ee.code)
 		}
-		// Cobra has already printed the error; exit 127 for CLI errors
-		// (unknown command, bad flag, etc.) to follow Unix conventions.
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		os.Exit(127)
 	}
 }

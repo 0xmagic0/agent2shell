@@ -201,6 +201,9 @@ func runCatch(cmd *cobra.Command, _ []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "[*] Listening on %s:%d...\n", cfg.Host, cfg.Port)
+	if logPath != "" {
+		fmt.Fprintf(os.Stderr, "[*] Recording to %s\n", logPath)
+	}
 
 	if err := l.Listen(ctx); err != nil {
 		return fmt.Errorf("catch: %w", err)
