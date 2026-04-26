@@ -83,7 +83,7 @@ Output is streamed line-by-line as it arrives. For long-running commands, increa
 agent2shell run -t 300 "/tmp/linpeas.sh"
 ```
 
-Pipe a local script through stdin — no file written to the target's disk:
+Run local scripts on the target without writing to disk:
 
 ```bash
 agent2shell run --stdin ./linpeas.sh                  # pipe to bash (default)
