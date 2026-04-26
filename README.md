@@ -83,6 +83,20 @@ Output is streamed line-by-line as it arrives. For long-running commands, increa
 agent2shell run -t 300 "/tmp/linpeas.sh"
 ```
 
+Pipe a local script through stdin — no file written to the target's disk:
+
+```bash
+agent2shell run --stdin ./linpeas.sh                  # pipe to bash (default)
+agent2shell run --stdin ./recon.py python3             # pipe to any interpreter
+agent2shell run --stdin ./dump.php php                 # PHP, Perl, Ruby...
+echo 'SELECT user();' | agent2shell run --stdin - mysql  # pipe from OS stdin
+```
+
+Flags:
+- `-t, --timeout` command timeout in seconds (default 30)
+- `--no-stream` buffer output and print all at once
+- `--stdin, -i` pipe a local file as stdin (use `-` for OS stdin)
+
 Exit codes 0-125 are forwarded from the remote command. Exit 124 means timeout, exit 126 means agent2shell error.
 
 ### status
