@@ -1,15 +1,17 @@
 ---
 name: agent2shell-dev-e2e-testing
 description: >
-  Development E2E testing protocol for agent2shell. Use after adding features
-  or fixing bugs to verify the binary works end-to-end — catch, run, status,
-  list, push, pull, streaming. Uses tmux sessions to simulate a real reverse
-  shell engagement. Includes rules for AI agents automating tests via tmux.
+  Use when manually testing agent2shell end-to-end, running E2E tests with
+  tmux, verifying the binary works after changes, or setting up a tmux-based
+  test environment. Covers catch/run/status/list/push/pull/stdin commands and
+  rules for AI agents automating E2E tests via tmux send-keys. Triggers on:
+  "test manually", "e2e test", "test with tmux", "verify the binary",
+  "manual testing", "tmux test setup".
 ---
 
 # E2E Testing with tmux
 
-Manual end-to-end testing of agent2shell using tmux sessions to simulate a real reverse shell engagement.
+End-to-end testing of agent2shell using tmux sessions to simulate a real reverse shell engagement.
 
 ## Setup
 
@@ -53,11 +55,10 @@ agent2shell pull /tmp/test-received.txt /tmp/test-pulled.txt
 diff /tmp/test-push.txt /tmp/test-pulled.txt
 ```
 
-6. Test long-running command with timeout
+6. Test long-running command with timeout and stdin
 ```bash
-agent2shell push ./linpeas.sh /tmp/linpeas.sh
-agent2shell run "chmod +x /tmp/linpeas.sh"
-agent2shell run -t 300 "/tmp/linpeas.sh"
+agent2shell run -t 10 "for i in 1 2 3 4 5; do echo line-\$i; sleep 1; done"
+agent2shell run -t 10 --stdin /tmp/test-push.txt    # reuse the push test file
 ```
 
 7. Test interactive mode in Session A
@@ -78,7 +79,7 @@ Session B returns to its shell prompt
 4. Use `tmux capture-pane -t <session> -p` to **observe** Session A output — never to interact.
 5. Always wrap socket API calls with `timeout 10` to prevent hangs.
 6. Clean stale sockets before each test: `rm -f /tmp/a2s-*.sock 2>/dev/null`
-7. Kill stuck processes via `ps aux | grep "bash.*tcp\|agent2shell"` then `kill <pid>`.
+7. Kill stuck processes via `pkill -f agent2shell`.
 8. Wait **6-8 seconds** after reverse shell connects for detection probes to finish before testing.
 9. After testing, kill catch via `tmux send-keys -t <session> C-c` twice (double-tap Ctrl-C).
 

@@ -1,21 +1,25 @@
 ---
 name: agent2shell-reverse-shell-agent
 description: >
-  Teaches an AI agent how to use agent2shell to interact with reverse shell
-  sessions. Covers executing commands on compromised targets, uploading and
-  downloading files, querying session metadata, running commands across
-  multiple sessions, and handling long-running commands with streaming output.
-  Copy this skill to your agent's instruction directory to enable autonomous
-  reverse shell interaction via agent2shell.
+  Use when an AI agent needs to execute commands on reverse shell targets via
+  agent2shell, upload or download files to/from compromised hosts, check
+  session status, broadcast commands across multiple sessions, or pipe scripts
+  via stdin without disk footprint. Triggers on: "run a command on the target",
+  "upload to the target", "download from the target", "check active sessions",
+  "agent2shell", "reverse shell", "push/pull files", "pipe script via stdin".
 ---
 
 # agent2shell — AI Agent Skill
 
-Copy this file to your AI agent's instruction directory (e.g., `.claude/` for Claude Code) to enable autonomous interaction with reverse shell sessions via agent2shell.
+agent2shell catches reverse shell connections over TCP and exposes them as structured JSON APIs via Unix domain sockets. You interact with the target by running `agent2shell` commands.
 
-## What is agent2shell
+## When to Use
 
-agent2shell catches reverse shell connections over TCP and exposes them as structured JSON APIs via Unix domain sockets. You interact with the target system by executing `agent2shell` commands — not by typing into a terminal.
+- Execute commands on a compromised target (`agent2shell run`)
+- Upload or download files to/from the target (`push`/`pull`)
+- Pipe local scripts to the target without writing to disk (`run --stdin`)
+- Check session metadata or list active sessions (`status`/`list`)
+- Broadcast commands across multiple sessions (`broadcast`)
 
 ## Prerequisites
 
@@ -143,14 +147,14 @@ agent2shell catch -p 5555 --tag database
 
 ## Workflow Patterns
 
-### Tool Execution via stdin (no disk footprint)
+### Running Scripts on the Target
 
+Use `--stdin` when you want zero disk footprint (script runs entirely through stdin):
 ```bash
 agent2shell run -t 300 --stdin ./linpeas.sh
 ```
 
-### Tool Upload and Execution (writes to disk)
-
+Use `push` when the script needs to persist on the target (run multiple times, share across sessions):
 ```bash
 agent2shell push ./linpeas.sh /tmp/linpeas.sh
 agent2shell run "chmod +x /tmp/linpeas.sh"
