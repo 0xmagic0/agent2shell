@@ -7,7 +7,7 @@ LDFLAGS := -s -w \
 	-X main.Commit=$(COMMIT) \
 	-X main.BuildDate=$(DATE)
 
-.PHONY: build test test-integration test-e2e lint fmt vet clean
+.PHONY: build test test-integration test-e2e lint fmt vet check clean
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o ./agent2shell ./cmd/agent2shell
@@ -30,6 +30,11 @@ fmt:
 
 vet:
 	go vet ./...
+
+check:
+	@UNFORMATTED=$$(gofmt -s -l .); if [ -n "$$UNFORMATTED" ]; then echo "Files not formatted:"; echo "$$UNFORMATTED"; exit 1; fi
+	go vet ./...
+	go test ./... -race -count=1
 
 clean:
 	rm -f ./agent2shell

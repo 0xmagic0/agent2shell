@@ -6,17 +6,19 @@ import (
 	"sort"
 )
 
-// socketGlobPattern is the glob used to discover agent2shell sockets in /tmp.
-const socketGlobPattern = "/tmp/a2s-*.sock"
+// SocketDir is the directory where agent2shell sockets live.
+// Tests override this to avoid colliding with real sessions.
+var SocketDir = "/tmp"
 
 // DiscoverSocket returns the sorted list of agent2shell Unix domain socket
 // paths that currently exist in /tmp. An empty result is not an error — it
 // simply means no sessions are running. Paths are returned in ascending
 // lexicographic order.
 func DiscoverSocket() ([]string, error) {
-	matches, err := filepath.Glob(socketGlobPattern)
+	pattern := fmt.Sprintf("%s/a2s-*.sock", SocketDir)
+	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("discover socket: glob %s: %w", socketGlobPattern, err)
+		return nil, fmt.Errorf("discover socket: glob %s: %w", pattern, err)
 	}
 
 	if matches == nil {
@@ -43,7 +45,7 @@ func NextSocketPath() (string, error) {
 	}
 
 	for n := 1; ; n++ {
-		candidate := fmt.Sprintf("/tmp/a2s-%d.sock", n)
+		candidate := fmt.Sprintf("%s/a2s-%d.sock", SocketDir, n)
 		if _, taken := set[candidate]; !taken {
 			return candidate, nil
 		}

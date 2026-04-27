@@ -48,6 +48,7 @@ Programmable reverse shell interface for AI agents. Go 1.22+, single static bina
 
 ## Testing
 
+- Run `make check` before committing (gofmt, go vet, tests)
 - Table-driven tests with testify
 - Unit tests: no networking, no filesystem side effects
 - Test file naming: `foo_test.go` next to `foo.go`

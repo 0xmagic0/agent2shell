@@ -1,7 +1,6 @@
 package socket_test
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"testing"
@@ -11,9 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// createRealSocket creates an actual Unix domain socket at path and registers
-// cleanup. DiscoverSocket globs /tmp/a2s-*.sock so we need real socket files,
-// not plain files, to match what the production code would see.
+func useTempSocketDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	old := socket.SocketDir
+	socket.SocketDir = dir
+	t.Cleanup(func() { socket.SocketDir = old })
+	return dir
+}
+
 func createRealSocket(t *testing.T, path string) {
 	t.Helper()
 	ln, err := net.Listen("unix", path)
@@ -24,75 +29,52 @@ func createRealSocket(t *testing.T, path string) {
 	})
 }
 
-// S4.8 — DiscoverSocket returns paths in sorted order.
 func TestDiscoverSocket_Sorted(t *testing.T) {
-	// Use unique suffix to avoid colliding with other test runs.
-	suffix := fmt.Sprintf("%d", os.Getpid())
+	dir := useTempSocketDir(t)
 
-	path1 := fmt.Sprintf("/tmp/a2s-%s-001.sock", suffix)
-	path2 := fmt.Sprintf("/tmp/a2s-%s-002.sock", suffix)
+	path1 := dir + "/a2s-001.sock"
+	path2 := dir + "/a2s-002.sock"
 
-	// Create in reverse order to prove sorting is not insertion-order.
 	createRealSocket(t, path2)
 	createRealSocket(t, path1)
 
 	paths, err := socket.DiscoverSocket()
 	require.NoError(t, err)
-
-	// Filter to only our test sockets (other sockets may exist on the system).
-	var found []string
-	for _, p := range paths {
-		if p == path1 || p == path2 {
-			found = append(found, p)
-		}
-	}
-
-	require.Len(t, found, 2, "expected both test sockets in result")
-	assert.Equal(t, path1, found[0], "expected sorted ascending")
-	assert.Equal(t, path2, found[1], "expected sorted ascending")
+	require.Len(t, paths, 2)
+	assert.Equal(t, path1, paths[0])
+	assert.Equal(t, path2, paths[1])
 }
 
-// S4.9 — DiscoverSocket with no matching sockets returns ([], nil).
 func TestDiscoverSocket_EmptyIsNotError(t *testing.T) {
-	// We cannot guarantee zero sockets globally, so we just verify that
-	// calling DiscoverSocket does not return an error even when the result
-	// may be empty.
+	useTempSocketDir(t)
+
 	paths, err := socket.DiscoverSocket()
 	require.NoError(t, err)
-	// paths may be non-nil with elements from real sessions; that is fine.
-	// The key contract is: empty result → nil error (not tested by checking
-	// len here, but by calling on a clean system in CI).
-	_ = paths
+	assert.Empty(t, paths)
 }
 
-// S4.9b — DiscoverSocket returns empty slice (not nil error) explicitly.
-// We test this by verifying the function signature contract: call it and
-// verify err == nil regardless of how many sockets exist.
 func TestDiscoverSocket_NilErrorOnEmpty(t *testing.T) {
+	useTempSocketDir(t)
+
 	_, err := socket.DiscoverSocket()
 	assert.NoError(t, err)
 }
 
-// S4.10 — NextSocketPath returns the lowest available N when 1 and 2 exist.
 func TestNextSocketPath_LowestAvailable(t *testing.T) {
-	path1 := "/tmp/a2s-1.sock"
-	path2 := "/tmp/a2s-2.sock"
+	dir := useTempSocketDir(t)
 
-	createRealSocket(t, path1)
-	createRealSocket(t, path2)
+	createRealSocket(t, dir+"/a2s-1.sock")
+	createRealSocket(t, dir+"/a2s-2.sock")
 
 	got, err := socket.NextSocketPath()
 	require.NoError(t, err)
-	assert.Equal(t, "/tmp/a2s-3.sock", got)
+	assert.Equal(t, dir+"/a2s-3.sock", got)
 }
 
-// S4.11 — NextSocketPath starts at 1 when nothing exists.
 func TestNextSocketPath_StartsAtOne(t *testing.T) {
-	// Remove 1 and 2 if they happen to exist from another test.
-	os.Remove("/tmp/a2s-1.sock")
-	os.Remove("/tmp/a2s-2.sock")
+	dir := useTempSocketDir(t)
 
 	got, err := socket.NextSocketPath()
 	require.NoError(t, err)
-	assert.Equal(t, "/tmp/a2s-1.sock", got)
+	assert.Equal(t, dir+"/a2s-1.sock", got)
 }
