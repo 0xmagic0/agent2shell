@@ -19,10 +19,10 @@ const smallFileThreshold = 16 * 1024 * 1024
 // It uses wc -c to detect file size, then selects a small-file (single base64)
 // or large-file (dd-chunked) path. Temp file is always in the same directory as
 // localPath so os.Rename is atomic.
-// Returns ErrNoChecksummer if opts.Checksummer is nil.
+// Returns ErrNoEncoder if opts.Encoder is nil. Checksummer is optional; nil skips verification.
 func Pull(ctx context.Context, exec ExecFunc, remotePath, localPath string, opts PullOpts) error {
-	if opts.Checksummer == nil {
-		return ErrNoChecksummer
+	if opts.Encoder == nil {
+		return ErrNoEncoder
 	}
 	if opts.ChunkSize == 0 {
 		opts.ChunkSize = DefaultChunkSize
@@ -78,8 +78,13 @@ func Pull(ctx context.Context, exec ExecFunc, remotePath, localPath string, opts
 	}
 
 	// 5. Checksum verification (file is at localPath after rename).
+	// verifyChecksum is a no-op when opts.Checksummer is nil.
 	if opts.Checksummer != nil {
-		local, err := localMD5(localPath)
+		algo := opts.Checksummer.HashAlgo
+		if algo == "" {
+			algo = "md5"
+		}
+		local, err := localHash(localPath, algo)
 		if err != nil {
 			return err
 		}
@@ -114,15 +119,15 @@ func remoteFileSize(ctx context.Context, exec ExecFunc, remotePath string, timeo
 	return n, nil
 }
 
-// pullSmall transfers a small file (≤ 16 MB) via a single `base64 <` command.
+// pullSmall transfers a small file (≤ 16 MB) via a single encoder command.
 func pullSmall(ctx context.Context, exec ExecFunc, remotePath string, out *os.File, size int64, opts PullOpts) error {
-	cmd := fmt.Sprintf("base64 < %s", shellQuote(remotePath))
+	cmd := fmt.Sprintf("cat %s | %s", shellQuote(remotePath), opts.Encoder.Command)
 	resp, err := execOrContextErr(ctx, exec, cmd, opts.Timeout)
 	if err != nil {
-		return fmt.Errorf("transfer: pull: base64: %w", err)
+		return fmt.Errorf("transfer: pull: encode: %w", err)
 	}
 	if resp.ExitCode != 0 {
-		return fmt.Errorf("transfer: pull: base64: exit %d: %s", resp.ExitCode, resp.Output)
+		return fmt.Errorf("transfer: pull: encode: exit %d: %s", resp.ExitCode, resp.Output)
 	}
 
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(resp.Output))
@@ -157,8 +162,8 @@ func pullChunked(ctx context.Context, exec ExecFunc, remotePath string, out *os.
 		}
 
 		cmd := fmt.Sprintf(
-			"dd if=%s bs=1 skip=%d count=%d 2>/dev/null | base64",
-			shellQuote(remotePath), offset, count,
+			"dd if=%s bs=1 skip=%d count=%d 2>/dev/null | %s",
+			shellQuote(remotePath), offset, count, opts.Encoder.Command,
 		)
 		resp, err := execOrContextErr(ctx, exec, cmd, opts.Timeout)
 		if err != nil {
@@ -185,14 +190,14 @@ func pullChunked(ctx context.Context, exec ExecFunc, remotePath string, out *os.
 	return nil
 }
 
-// localMD5 computes the MD5 of the file at path and returns the hex string.
-func localMD5(path string) (string, error) {
+// localHash computes the hash of the file at path using the named algorithm ("md5" or "sha256").
+func localHash(path string, algo string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("transfer: pull: open for checksum: %w", err)
 	}
 	defer f.Close()
-	return computeMD5(f)
+	return computeHash(f, algo)
 }
 
 // execOrContextErr calls exec and wraps context errors for clean propagation.

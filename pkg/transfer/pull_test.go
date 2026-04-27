@@ -49,6 +49,162 @@ func hexMD5(data []byte) string {
 	return fmt.Sprintf("%x", h)
 }
 
+// testEncoder returns an Encoder using the standard base64 binary for tests.
+func testEncoder() *Encoder {
+	return &Encoder{Name: "base64", Command: "base64"}
+}
+
+// TestPull_NilEncoderReturnsError verifies Pull returns ErrNoEncoder when opts.Encoder is nil.
+func TestPull_NilEncoderReturnsError(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		calls++
+		return &types.ExecResponse{ExitCode: 0, Output: "100\n"}, nil
+	}
+
+	localPath := filepath.Join(t.TempDir(), "out.txt")
+	err := Pull(context.Background(), exec, "/remote/file.txt", localPath, PullOpts{
+		Encoder:     nil, // explicitly nil
+		Checksummer: testChecksummer,
+	})
+
+	require.ErrorIs(t, err, ErrNoEncoder)
+	assert.Equal(t, 0, calls, "no exec calls expected when encoder is nil")
+}
+
+// TestPull_NilChecksummerSkipsVerification verifies Pull completes successfully
+// when opts.Checksummer is nil — no checksum step, no error.
+func TestPull_NilChecksummerSkipsVerification(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("data without checksum verification")
+	encoded := base64.StdEncoding.EncodeToString(content)
+	size := len(content)
+
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		if strings.Contains(cmd, "wc -c") {
+			return &types.ExecResponse{Output: fmt.Sprintf("%d\n", size)}, nil
+		}
+		// base64 encoder command
+		if strings.Contains(cmd, "base64") {
+			return &types.ExecResponse{Output: encoded + "\n"}, nil
+		}
+		return &types.ExecResponse{ExitCode: 1, Output: "unexpected: " + cmd}, nil
+	}
+
+	localPath := filepath.Join(t.TempDir(), "no_checksum.txt")
+	err := Pull(context.Background(), exec, "/remote/file.txt", localPath, PullOpts{
+		Encoder:     testEncoder(),
+		Checksummer: nil, // nil → skip verification, no error
+	})
+
+	require.NoError(t, err)
+	got, err := os.ReadFile(localPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
+}
+
+// TestPull_SmallFileUsesEncoderCommand verifies pullSmall uses opts.Encoder.Command,
+// not a hardcoded "base64" binary.
+func TestPull_SmallFileUsesEncoderCommand(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("small file content")
+	encoded := base64.StdEncoding.EncodeToString(content)
+	size := len(content)
+	hash := hexMD5(content)
+
+	customEncoder := &Encoder{Name: "openssl", Command: "openssl enc -base64"}
+	var capturedBase64Cmd string
+
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		if strings.Contains(cmd, "wc -c") {
+			return &types.ExecResponse{Output: fmt.Sprintf("%d\n", size)}, nil
+		}
+		if strings.Contains(cmd, "openssl enc -base64") || strings.Contains(cmd, "base64") {
+			capturedBase64Cmd = cmd
+			return &types.ExecResponse{Output: encoded + "\n"}, nil
+		}
+		if strings.Contains(cmd, "md5sum") {
+			return &types.ExecResponse{Output: hash + "\n"}, nil
+		}
+		return &types.ExecResponse{ExitCode: 1, Output: "unexpected: " + cmd}, nil
+	}
+
+	localPath := filepath.Join(t.TempDir(), "encoder_cmd.txt")
+	err := Pull(context.Background(), exec, "/remote/file.txt", localPath, PullOpts{
+		Encoder:     customEncoder,
+		Checksummer: testChecksummer,
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, capturedBase64Cmd, "openssl enc -base64",
+		"pullSmall must use encoder.Command, not hardcoded base64; got: %s", capturedBase64Cmd)
+	assert.NotContains(t, capturedBase64Cmd, "base64 <",
+		"must NOT use hardcoded 'base64 <' form")
+}
+
+// TestPull_ChunkedUsesEncoderCommand verifies pullChunked uses opts.Encoder.Command.
+func TestPull_ChunkedUsesEncoderCommand(t *testing.T) {
+	t.Parallel()
+
+	chunkSize := 6 * 1024 * 1024
+	totalSize := int64(smallFileThreshold + 1024*1024) // 17 MB → chunked path
+
+	content := make([]byte, totalSize)
+	for i := range content {
+		content[i] = byte(i % 256)
+	}
+
+	numChunks := int((totalSize + int64(chunkSize) - 1) / int64(chunkSize))
+	chunkEncoded := make([]string, numChunks)
+	for i := 0; i < numChunks; i++ {
+		offset := int64(i) * int64(chunkSize)
+		end := offset + int64(chunkSize)
+		if end > totalSize {
+			end = totalSize
+		}
+		chunkEncoded[i] = base64.StdEncoding.EncodeToString(content[offset:end])
+	}
+
+	chunkIdx := 0
+	customEncoder := &Encoder{Name: "openssl", Command: "openssl enc -base64"}
+	var capturedDDCmd string
+
+	hash := hexMD5(content)
+
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		if strings.Contains(cmd, "wc -c") {
+			return &types.ExecResponse{Output: fmt.Sprintf("%d\n", totalSize)}, nil
+		}
+		if strings.Contains(cmd, "dd if=") {
+			capturedDDCmd = cmd
+			i := chunkIdx
+			chunkIdx++
+			return &types.ExecResponse{Output: chunkEncoded[i] + "\n"}, nil
+		}
+		if strings.Contains(cmd, "md5sum") {
+			return &types.ExecResponse{Output: hash + "\n"}, nil
+		}
+		return &types.ExecResponse{ExitCode: 1, Output: "unexpected: " + cmd}, nil
+	}
+
+	localPath := filepath.Join(t.TempDir(), "chunked_encoder.bin")
+	err := Pull(context.Background(), exec, "/remote/large.bin", localPath, PullOpts{
+		Encoder:     customEncoder,
+		Checksummer: testChecksummer,
+		ChunkSize:   chunkSize,
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, capturedDDCmd, "openssl enc -base64",
+		"pullChunked must use encoder.Command; got: %s", capturedDDCmd)
+	assert.NotContains(t, capturedDDCmd, "| base64\n",
+		"must NOT use hardcoded '| base64'")
+}
+
 // TestPullSmallFile verifies a file ≤ 16 MB is transferred via a single base64 command.
 func TestPullSmallFile(t *testing.T) {
 	t.Parallel()
@@ -63,7 +219,7 @@ func TestPullSmallFile(t *testing.T) {
 		if strings.Contains(cmd, "wc -c") {
 			return &types.ExecResponse{Output: fmt.Sprintf("  %d\n", size)}, nil
 		}
-		if strings.Contains(cmd, "base64 <") {
+		if strings.Contains(cmd, "base64") {
 			return &types.ExecResponse{Output: encoded + "\n"}, nil
 		}
 		if strings.Contains(cmd, "md5sum") {
@@ -74,6 +230,7 @@ func TestPullSmallFile(t *testing.T) {
 
 	localPath := filepath.Join(t.TempDir(), "output.txt")
 	err := Pull(context.Background(), exec, "/remote/file.txt", localPath, PullOpts{
+		Encoder:     testEncoder(),
 		Checksummer: testChecksummer,
 	})
 	require.NoError(t, err)
@@ -138,6 +295,7 @@ func TestPullLargeFileChunked(t *testing.T) {
 
 	localPath := filepath.Join(t.TempDir(), "large.bin")
 	err := Pull(context.Background(), exec, "/remote/large.bin", localPath, PullOpts{
+		Encoder:     testEncoder(),
 		ChunkSize:   chunkSize,
 		Checksummer: testChecksummer,
 	})
@@ -158,6 +316,7 @@ func TestPullEmptyFile(t *testing.T) {
 
 	localPath := filepath.Join(t.TempDir(), "empty.txt")
 	err := Pull(context.Background(), exec, "/remote/empty.txt", localPath, PullOpts{
+		Encoder:     testEncoder(),
 		Checksummer: testChecksummer,
 	})
 
@@ -176,6 +335,7 @@ func TestPullMissingFile(t *testing.T) {
 
 	localPath := filepath.Join(t.TempDir(), "missing.txt")
 	err := Pull(context.Background(), exec, "/remote/missing.txt", localPath, PullOpts{
+		Encoder:     testEncoder(),
 		Checksummer: testChecksummer,
 	})
 
@@ -196,7 +356,7 @@ func TestPullChecksumMatch(t *testing.T) {
 		switch {
 		case strings.Contains(cmd, "wc -c"):
 			return &types.ExecResponse{Output: fmt.Sprintf("%d\n", size)}, nil
-		case strings.Contains(cmd, "base64 <"):
+		case strings.Contains(cmd, "base64"):
 			return &types.ExecResponse{Output: encoded + "\n"}, nil
 		case strings.Contains(cmd, "md5sum"):
 			return &types.ExecResponse{Output: hash + "\n"}, nil
@@ -205,7 +365,14 @@ func TestPullChecksumMatch(t *testing.T) {
 	}
 
 	localPath := filepath.Join(t.TempDir(), "checksummed.txt")
-	opts := PullOpts{Checksummer: &Checksummer{Name: "md5sum"}}
+	opts := PullOpts{
+		Encoder: testEncoder(),
+		Checksummer: &Checksummer{
+			Name:           "md5sum",
+			VerifyTemplate: "md5sum %s | awk '{print $1}'",
+			HashAlgo:       "md5",
+		},
+	}
 	err := Pull(context.Background(), exec, "/remote/checksummed.txt", localPath, opts)
 	require.NoError(t, err)
 }
@@ -222,7 +389,7 @@ func TestPullChecksumMismatch(t *testing.T) {
 		switch {
 		case strings.Contains(cmd, "wc -c"):
 			return &types.ExecResponse{Output: fmt.Sprintf("%d\n", size)}, nil
-		case strings.Contains(cmd, "base64 <"):
+		case strings.Contains(cmd, "base64"):
 			return &types.ExecResponse{Output: encoded + "\n"}, nil
 		case strings.Contains(cmd, "md5sum"):
 			return &types.ExecResponse{Output: "deadbeefdeadbeefdeadbeefdeadbeef\n"}, nil
@@ -231,7 +398,14 @@ func TestPullChecksumMismatch(t *testing.T) {
 	}
 
 	localPath := filepath.Join(t.TempDir(), "mismatch.txt")
-	opts := PullOpts{Checksummer: &Checksummer{Name: "md5sum"}}
+	opts := PullOpts{
+		Encoder: testEncoder(),
+		Checksummer: &Checksummer{
+			Name:           "md5sum",
+			VerifyTemplate: "md5sum %s | awk '{print $1}'",
+			HashAlgo:       "md5",
+		},
+	}
 	err := Pull(context.Background(), exec, "/remote/mismatch.txt", localPath, opts)
 
 	require.ErrorIs(t, err, ErrChecksumMismatch)
@@ -246,7 +420,7 @@ func TestPullTempFileCleanupOnError(t *testing.T) {
 		if strings.Contains(cmd, "wc -c") {
 			return &types.ExecResponse{Output: "100\n"}, nil
 		}
-		if strings.Contains(cmd, "base64 <") {
+		if strings.Contains(cmd, "base64") {
 			return nil, xferErr
 		}
 		return &types.ExecResponse{ExitCode: 1}, nil
@@ -255,6 +429,7 @@ func TestPullTempFileCleanupOnError(t *testing.T) {
 	dir := t.TempDir()
 	localPath := filepath.Join(dir, "cleanup.txt")
 	err := Pull(context.Background(), exec, "/remote/file.txt", localPath, PullOpts{
+		Encoder:     testEncoder(),
 		Checksummer: testChecksummer,
 	})
 
@@ -283,7 +458,7 @@ func TestPullProgressCallback(t *testing.T) {
 		if strings.Contains(cmd, "wc -c") {
 			return &types.ExecResponse{Output: fmt.Sprintf("%d\n", size)}, nil
 		}
-		if strings.Contains(cmd, "base64 <") {
+		if strings.Contains(cmd, "base64") {
 			return &types.ExecResponse{Output: encoded + "\n"}, nil
 		}
 		if strings.Contains(cmd, "md5sum") {
@@ -294,6 +469,7 @@ func TestPullProgressCallback(t *testing.T) {
 
 	var progressCalls [][2]int64
 	opts := PullOpts{
+		Encoder:     testEncoder(),
 		Checksummer: testChecksummer,
 		OnProgress: func(transferred, total int64) {
 			progressCalls = append(progressCalls, [2]int64{transferred, total})
@@ -324,6 +500,7 @@ func TestPullContextCancellation(t *testing.T) {
 	dir := t.TempDir()
 	localPath := filepath.Join(dir, "cancelled.txt")
 	err := Pull(ctx, exec, "/remote/file.txt", localPath, PullOpts{
+		Encoder:     testEncoder(),
 		Checksummer: testChecksummer,
 	})
 

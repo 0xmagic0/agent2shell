@@ -37,9 +37,10 @@ var (
 	rePushAppend    = regexp.MustCompile(`^printf '%s' '([^']+)' \| base64 --decode >> '(.+)'$`)
 	reMD5Sum        = regexp.MustCompile(`^md5sum '(.+)' \| awk '\{print \$1\}'$`)
 	reWC            = regexp.MustCompile(`^wc -c < '(.+)'$`)
-	reBase64Read    = regexp.MustCompile(`^base64 < '(.+)'$`)
+	reBase64Read    = regexp.MustCompile(`^cat '(.+)' \| base64$`)
 	reDD            = regexp.MustCompile(`^dd if='(.+)' bs=1 skip=(\d+) count=(\d+) 2>/dev/null \| base64$`)
 	reDecoderProbe  = regexp.MustCompile(`^echo 'dGVzdA==' \| base64 --decode 2>/dev/null$`)
+	reEncoderProbe  = regexp.MustCompile(`^printf 'test' \| base64 2>/dev/null$`)
 	reChecksumProbe = regexp.MustCompile(`^echo -n 'test' \| md5sum 2>/dev/null$`)
 )
 
@@ -55,6 +56,10 @@ func (fs *mockFS) handleCommand(cmd string) (*types.ExecResponse, error) {
 
 	if reDecoderProbe.MatchString(cmd) {
 		return ok("test")
+	}
+
+	if reEncoderProbe.MatchString(cmd) {
+		return ok("dGVzdA==")
 	}
 
 	if reChecksumProbe.MatchString(cmd) {
@@ -201,10 +206,14 @@ func TestTransfer_PushPullRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	exec := makeExec(sockPath)
 
-	// Detect decoder and checksummer through the real socket.
+	// Detect decoder, encoder, and checksummer through the real socket.
 	dec, err := transfer.DetectDecoder(ctx, exec, 5)
 	require.NoError(t, err)
 	require.NotNil(t, dec)
+
+	enc, err := transfer.DetectEncoder(ctx, exec, 5)
+	require.NoError(t, err)
+	require.NotNil(t, enc)
 
 	chk, err := transfer.DetectChecksum(ctx, exec, 5)
 	require.NoError(t, err)
@@ -229,6 +238,7 @@ func TestTransfer_PushPullRoundTrip(t *testing.T) {
 	// Pull back to a local file.
 	localOut := filepath.Join(t.TempDir(), "output.txt")
 	err = transfer.Pull(ctx, exec, remotePath, localOut, transfer.PullOpts{
+		Encoder:     enc,
 		Checksummer: chk,
 	})
 	require.NoError(t, err)
@@ -252,6 +262,10 @@ func TestTransfer_PathWithSpaces(t *testing.T) {
 	dec, err := transfer.DetectDecoder(ctx, exec, 5)
 	require.NoError(t, err)
 
+	enc, err := transfer.DetectEncoder(ctx, exec, 5)
+	require.NoError(t, err)
+	require.NotNil(t, enc)
+
 	chk, err := transfer.DetectChecksum(ctx, exec, 5)
 	require.NoError(t, err)
 	require.NotNil(t, chk)
@@ -266,7 +280,7 @@ func TestTransfer_PathWithSpaces(t *testing.T) {
 	assert.Equal(t, want, fs.files[remotePath])
 
 	localOut := filepath.Join(t.TempDir(), "out.txt")
-	err = transfer.Pull(ctx, exec, remotePath, localOut, transfer.PullOpts{Checksummer: chk})
+	err = transfer.Pull(ctx, exec, remotePath, localOut, transfer.PullOpts{Encoder: enc, Checksummer: chk})
 	require.NoError(t, err)
 
 	got, err := os.ReadFile(localOut)
@@ -352,12 +366,17 @@ func TestTransfer_PullSmallFile(t *testing.T) {
 	fs.files["/remote/small.txt"] = want
 	fs.mu.Unlock()
 
+	enc, err := transfer.DetectEncoder(ctx, exec, 5)
+	require.NoError(t, err)
+	require.NotNil(t, enc)
+
 	chk, err := transfer.DetectChecksum(ctx, exec, 5)
 	require.NoError(t, err)
 	require.NotNil(t, chk)
 
 	localOut := filepath.Join(t.TempDir(), "out.txt")
 	err = transfer.Pull(ctx, exec, "/remote/small.txt", localOut, transfer.PullOpts{
+		Encoder:     enc,
 		Checksummer: chk,
 	})
 	require.NoError(t, err)
@@ -396,6 +415,10 @@ func TestTransfer_PullWithChecksum(t *testing.T) {
 	ctx := context.Background()
 	exec := makeExec(sockPath)
 
+	enc, err := transfer.DetectEncoder(ctx, exec, 5)
+	require.NoError(t, err)
+	require.NotNil(t, enc)
+
 	chk, err := transfer.DetectChecksum(ctx, exec, 5)
 	require.NoError(t, err)
 	require.NotNil(t, chk)
@@ -407,6 +430,7 @@ func TestTransfer_PullWithChecksum(t *testing.T) {
 
 	localOut := filepath.Join(t.TempDir(), "out.txt")
 	err = transfer.Pull(ctx, exec, "/remote/chk_pull.txt", localOut, transfer.PullOpts{
+		Encoder:     enc,
 		Checksummer: chk,
 	})
 	require.NoError(t, err)
@@ -431,12 +455,17 @@ func TestTransfer_PullEmptyFile(t *testing.T) {
 	fs.files["/remote/empty.txt"] = []byte{}
 	fs.mu.Unlock()
 
+	enc, err := transfer.DetectEncoder(ctx, exec, 5)
+	require.NoError(t, err)
+	require.NotNil(t, enc)
+
 	chk, err := transfer.DetectChecksum(ctx, exec, 5)
 	require.NoError(t, err)
 	require.NotNil(t, chk)
 
 	localOut := filepath.Join(t.TempDir(), "out.txt")
 	err = transfer.Pull(ctx, exec, "/remote/empty.txt", localOut, transfer.PullOpts{
+		Encoder:     enc,
 		Checksummer: chk,
 	})
 	require.ErrorIs(t, err, transfer.ErrEmptyFile)
@@ -542,11 +571,20 @@ func TestTransfer_PullChecksumMismatch(t *testing.T) {
 	ctx := context.Background()
 	exec := makeExec(sockPath)
 
-	// We need a Checksummer; use md5sum directly since we know it's mocked.
-	chk := &transfer.Checksummer{Name: "md5sum", Command: "md5sum"}
+	// Use a hardcoded encoder since the custom handler doesn't respond to encoder probes.
+	enc := &transfer.Encoder{Name: "base64", Command: "base64"}
+
+	// Checksummer with VerifyTemplate so verifyChecksum uses the template.
+	chk := &transfer.Checksummer{
+		Name:           "md5sum",
+		Command:        "md5sum",
+		VerifyTemplate: "md5sum %s | awk '{print $1}'",
+		HashAlgo:       "md5",
+	}
 
 	localOut := filepath.Join(t.TempDir(), "out.txt")
 	err := transfer.Pull(ctx, exec, "/remote/file.txt", localOut, transfer.PullOpts{
+		Encoder:     enc,
 		Checksummer: chk,
 	})
 	require.ErrorIs(t, err, transfer.ErrChecksumMismatch)
