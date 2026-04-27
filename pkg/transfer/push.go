@@ -3,8 +3,10 @@ package transfer
 import (
 	"context"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 )
@@ -13,13 +15,11 @@ import (
 // It reads localPath, encodes each chunk, and pipes it through the decoder
 // command into remotePath using printf to avoid echo's trailing newline.
 //
-// Returns ErrNoDecoder if opts.Decoder is nil, ErrNoChecksummer if opts.Checksummer is nil.
+// Returns ErrNoDecoder if opts.Decoder is nil.
+// Checksummer is optional: nil skips verification (no error returned).
 func Push(ctx context.Context, exec ExecFunc, localPath, remotePath string, opts PushOpts) error {
 	if opts.Decoder == nil {
 		return ErrNoDecoder
-	}
-	if opts.Checksummer == nil {
-		return ErrNoChecksummer
 	}
 
 	if opts.ChunkSize == 0 {
@@ -41,7 +41,17 @@ func Push(ctx context.Context, exec ExecFunc, localPath, remotePath string, opts
 	}
 	totalSize := info.Size()
 
-	h := md5.New()
+	// Select hash algorithm based on checksummer (default md5 for backward compat).
+	var localHasher hash.Hash
+	hashAlgo := "md5"
+	if opts.Checksummer != nil && opts.Checksummer.HashAlgo != "" {
+		hashAlgo = opts.Checksummer.HashAlgo
+	}
+	localHasher, err = newHasher(hashAlgo)
+	if err != nil {
+		return err
+	}
+
 	buf := make([]byte, opts.ChunkSize)
 	quoted := shellQuote(remotePath)
 	chunkIdx := 0
@@ -63,7 +73,7 @@ func Push(ctx context.Context, exec ExecFunc, localPath, remotePath string, opts
 		}
 
 		chunk := buf[:n]
-		h.Write(chunk)
+		localHasher.Write(chunk)
 
 		encoded := base64.StdEncoding.EncodeToString(chunk)
 
@@ -102,8 +112,25 @@ func Push(ctx context.Context, exec ExecFunc, localPath, remotePath string, opts
 		}
 	}
 
-	md5hex := fmt.Sprintf("%x", h.Sum(nil))
-	return verifyChecksum(ctx, exec, opts.Checksummer, remotePath, md5hex, opts.Timeout)
+	// Skip verification when no checksummer available.
+	if opts.Checksummer == nil {
+		return nil
+	}
+
+	localHex := fmt.Sprintf("%x", localHasher.Sum(nil))
+	return verifyChecksum(ctx, exec, opts.Checksummer, remotePath, localHex, opts.Timeout)
+}
+
+// newHasher returns a hash.Hash for the named algorithm.
+func newHasher(algo string) (hash.Hash, error) {
+	switch algo {
+	case "md5":
+		return md5.New(), nil
+	case "sha256":
+		return sha256.New(), nil
+	default:
+		return nil, fmt.Errorf("transfer: push: unsupported hash algo %q", algo)
+	}
 }
 
 // totalChunkCount computes the total number of chunks for human-readable error messages.

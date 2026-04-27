@@ -23,67 +23,79 @@ func init() {
 	rootCmd.AddCommand(pullCmd)
 }
 
+// pullExecBuilder returns an ExecFunc for the given socket path.
+// Package-level var so tests can inject a mock.
+var pullExecBuilder func(socketPath string) transfer.ExecFunc = func(socketPath string) transfer.ExecFunc {
+	return func(ctx context.Context, command string, timeout int) (*types.ExecResponse, error) {
+		return client.Run(ctx, socketPath, command, timeout, "")
+	}
+}
+
 func runPull(cmd *cobra.Command, args []string) error {
 	remotePath := args[0]
 	localPath := args[1]
 
+	errW := cmd.ErrOrStderr()
+
 	socketPath, err := resolveSocket(cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		fmt.Fprintf(errW, "error: %s\n", err)
 		return &exitError{code: 126}
 	}
 
-	exec := func(ctx context.Context, command string, timeout int) (*types.ExecResponse, error) {
-		return client.Run(ctx, socketPath, command, timeout, "")
-	}
-
+	exec := pullExecBuilder(socketPath)
 	ctx := context.Background()
 	timeout, _ := cmd.Flags().GetInt("timeout") // flag registered in init()
 
+	// Encoder detection is required — pull cannot proceed without a base64 encoder.
+	encoder, err := transfer.DetectEncoder(ctx, exec, timeout)
+	if err != nil {
+		fmt.Fprintf(errW, "error: no base64 encoder available on target: %s\n", err)
+		return &exitError{code: 126}
+	}
+
 	checksummer, err := transfer.DetectChecksum(ctx, exec, timeout)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: checksum detection failed: %s\n", err)
-		return &exitError{code: 126}
-	}
-	if checksummer == nil {
-		fmt.Fprintf(os.Stderr, "error: no checksum tool (md5sum/md5) available on target\n")
+		fmt.Fprintf(errW, "error: checksum detection failed: %s\n", err)
 		return &exitError{code: 126}
 	}
 
-	fmt.Fprintf(os.Stderr, "[*] Pulling %s → %s...\n", remotePath, localPath)
+	// Warn-and-proceed when no checksum tool is available.
+	checksumVerified := checksummer != nil
+	if !checksumVerified {
+		fmt.Fprintf(errW, "[!] Warning: no checksum tool available on target, skipping verification\n")
+	}
+
+	fmt.Fprintf(errW, "[*] Pulling %s → %s...\n", remotePath, localPath)
 
 	opts := transfer.PullOpts{
+		Encoder:     encoder,
 		Checksummer: checksummer,
 		Timeout:     timeout,
-		OnProgress: func(transferred, total int64) {
-			pct := int64(0)
-			if total > 0 {
-				pct = transferred * 100 / total
-			}
-			fmt.Fprintf(os.Stderr, "\r[*] %d%% (%s / %s)",
-				pct, humanSize(transferred), humanSize(total))
-		},
+		OnProgress:  makeProgressFunc(errW),
 	}
 
 	if err := transfer.Pull(ctx, exec, remotePath, localPath, opts); err != nil {
-		fmt.Fprintf(os.Stderr, "\nerror: pull failed: %s\n", err)
+		fmt.Fprintf(errW, "\nerror: pull failed: %s\n", err)
 		return &exitError{code: 126}
 	}
 
 	// Print final newline after progress line, then summary.
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(errW)
 
 	info, err := os.Stat(localPath)
 	var sizeStr string
 	if err == nil {
 		sizeStr = humanSize(info.Size())
 	} else {
-		// stat failure after a successful pull is unexpected; surface size as
-		// unknown rather than masking the error with a panic or silent zero.
 		sizeStr = "unknown size"
 	}
 
-	fmt.Fprintf(os.Stderr, "[*] Transfer complete. Checksum verified. (%s)\n", sizeStr)
+	if checksumVerified {
+		fmt.Fprintf(errW, "[*] Transfer complete. Checksum verified. (%s)\n", sizeStr)
+	} else {
+		fmt.Fprintf(errW, "[*] Transfer complete. Checksum NOT verified. (%s)\n", sizeStr)
+	}
 
 	return nil
 }

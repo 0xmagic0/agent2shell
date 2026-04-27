@@ -45,14 +45,24 @@ func mockExecIndexed(calls *[]execCall, responses map[int]*types.ExecResponse, e
 	}
 }
 
-var testChecksummer = &Checksummer{Name: "md5sum", Command: "md5sum"}
+var testChecksummer = &Checksummer{
+	Name:           "md5sum",
+	Command:        "md5sum",
+	VerifyTemplate: "md5sum %s | awk '{print $1}'",
+	HashAlgo:       "md5",
+}
 
 func decoder() *Decoder {
 	return &Decoder{Name: "base64", Command: "base64 --decode"}
 }
 
 func checksummer() *Checksummer {
-	return &Checksummer{Name: "md5sum"}
+	return &Checksummer{
+		Name:           "md5sum",
+		Command:        "md5sum",
+		VerifyTemplate: "md5sum %s | awk '{print $1}'",
+		HashAlgo:       "md5",
+	}
 }
 
 // writeTempFile creates a temp file with exactly n bytes and returns its path.
@@ -285,8 +295,33 @@ func TestPush_NilChecksummer(t *testing.T) {
 		Checksummer: nil,
 	})
 
-	require.ErrorIs(t, err, ErrNoChecksummer)
-	assert.Empty(t, calls, "no exec calls expected when checksummer is nil")
+	// Nil checksummer: transfer proceeds without verification, returns nil.
+	require.NoError(t, err)
+	require.Len(t, calls, 1, "only the chunk call; no checksum call")
+}
+
+// TestPush_NilChecksummerSkipsVerification is the triangulation case:
+// confirms exec is called for the chunk but NOT for checksum when Checksummer is nil.
+func TestPush_NilChecksummerSkipsVerification(t *testing.T) {
+	t.Parallel()
+
+	localPath := writeTempFile(t, 100)
+
+	var capturedCmds []string
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		capturedCmds = append(capturedCmds, cmd)
+		return &types.ExecResponse{ExitCode: 0}, nil
+	}
+
+	err := Push(context.Background(), exec, localPath, "/remote/out", PushOpts{
+		Decoder:     decoder(),
+		Checksummer: nil,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, capturedCmds, 1, "exactly 1 exec call (chunk); checksum call must be skipped")
+	assert.NotContains(t, capturedCmds[0], "md5sum",
+		"chunk command must not contain checksum tool name")
 }
 
 func TestPush_NilOnProgress(t *testing.T) {

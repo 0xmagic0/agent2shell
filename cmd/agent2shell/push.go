@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -24,6 +25,10 @@ func init() {
 	rootCmd.AddCommand(pushCmd)
 }
 
+// pushExecBuilder returns an ExecFunc that delegates to client.Run over the
+// given Unix socket. Package-level var so tests can inject a mock.
+var pushExecBuilder func(socketPath string) transfer.ExecFunc = buildPushExecFunc
+
 // buildPushExecFunc returns an ExecFunc that delegates to client.Run over the
 // given Unix socket. Extracted so tests can verify the closure without a live
 // socket.
@@ -37,18 +42,20 @@ func runPush(cmd *cobra.Command, args []string) error {
 	localPath := args[0]
 	remotePath := args[1]
 
+	errW := cmd.ErrOrStderr()
+
 	socketPath, err := resolveSocket(cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		fmt.Fprintf(errW, "error: %s\n", err)
 		return &exitError{code: 126}
 	}
 
-	exec := buildPushExecFunc(socketPath)
+	exec := pushExecBuilder(socketPath)
 	ctx := context.Background()
 
 	info, err := os.Stat(localPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: stat %s: %s\n", localPath, err)
+		fmt.Fprintf(errW, "error: stat %s: %s\n", localPath, err)
 		return &exitError{code: 126}
 	}
 
@@ -56,47 +63,58 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 	decoder, err := transfer.DetectDecoder(ctx, exec, timeout)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		fmt.Fprintf(errW, "error: %s\n", err)
 		return &exitError{code: 126}
 	}
 
 	checksummer, err := transfer.DetectChecksum(ctx, exec, timeout)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: checksum detection failed: %s\n", err)
-		return &exitError{code: 126}
-	}
-	if checksummer == nil {
-		fmt.Fprintf(os.Stderr, "error: no checksum tool (md5sum/md5) available on target\n")
+		fmt.Fprintf(errW, "error: checksum detection failed: %s\n", err)
 		return &exitError{code: 126}
 	}
 
+	// Warn-and-proceed when no checksum tool is available.
+	checksumVerified := checksummer != nil
+	if !checksumVerified {
+		fmt.Fprintf(errW, "[!] Warning: no checksum tool available on target, skipping verification\n")
+	}
+
 	size := info.Size()
-	fmt.Fprintf(os.Stderr, "[*] Pushing %s → %s (%s)...\n",
+	fmt.Fprintf(errW, "[*] Pushing %s → %s (%s)...\n",
 		filepath.Base(localPath), remotePath, humanSize(size))
 
 	opts := transfer.PushOpts{
 		Decoder:     decoder,
 		Checksummer: checksummer,
 		Timeout:     timeout,
-		OnProgress: func(transferred, total int64) {
-			var percent int64
-			if total > 0 {
-				percent = transferred * 100 / total
-			}
-			fmt.Fprintf(os.Stderr, "\r[*] %d%% (%s / %s)",
-				percent, humanSize(transferred), humanSize(total))
-		},
+		OnProgress:  makeProgressFunc(errW),
 	}
 
 	if err := transfer.Push(ctx, exec, localPath, remotePath, opts); err != nil {
-		fmt.Fprintf(os.Stderr, "\nerror: push failed: %s\n", err)
+		fmt.Fprintf(errW, "\nerror: push failed: %s\n", err)
 		return &exitError{code: 126}
 	}
 
 	// Move past the in-place progress line.
-	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(errW, "\n")
 
-	fmt.Fprintf(os.Stderr, "[*] Transfer complete. Checksum verified.\n")
+	if checksumVerified {
+		fmt.Fprintf(errW, "[*] Transfer complete. Checksum verified.\n")
+	} else {
+		fmt.Fprintf(errW, "[*] Transfer complete. Checksum NOT verified.\n")
+	}
 
 	return nil
+}
+
+// makeProgressFunc returns an OnProgress callback that prints to w.
+func makeProgressFunc(w io.Writer) transfer.ProgressFunc {
+	return func(transferred, total int64) {
+		var percent int64
+		if total > 0 {
+			percent = transferred * 100 / total
+		}
+		fmt.Fprintf(w, "\r[*] %d%% (%s / %s)",
+			percent, humanSize(transferred), humanSize(total))
+	}
 }

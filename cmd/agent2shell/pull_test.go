@@ -1,10 +1,127 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/0xmagic0/agent2shell/pkg/transfer"
+	"github.com/0xmagic0/agent2shell/pkg/types"
 	"github.com/spf13/cobra"
 )
+
+// withPullExecFunc replaces the global pullExecFunc with a mock and returns cleanup.
+func withPullExecFunc(t *testing.T, exec transfer.ExecFunc) func() {
+	t.Helper()
+	orig := pullExecBuilder
+	pullExecBuilder = func(_ string) transfer.ExecFunc { return exec }
+	return func() { pullExecBuilder = orig }
+}
+
+// newPullTestCmd returns a fresh pull cobra.Command isolated from the global tree.
+func newPullTestCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "pull <remote-path> <local-path>",
+		Args:         cobra.ExactArgs(2),
+		RunE:         runPull,
+		SilenceUsage: true,
+	}
+	cmd.Flags().IntP("timeout", "t", 300, "transfer timeout in seconds")
+	return cmd
+}
+
+// TestRunPull_NoEncoder_ExitsNonZero verifies that when DetectEncoder finds no encoder,
+// pull exits non-zero with an error message.
+func TestRunPull_NoEncoder_ExitsNonZero(t *testing.T) {
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		// All encoder probes fail
+		if strings.Contains(cmd, "printf") {
+			return &types.ExecResponse{ExitCode: 1, Output: ""}, nil
+		}
+		// Checksummer probes also fail
+		return &types.ExecResponse{ExitCode: 1, Output: ""}, nil
+	}
+
+	defer withPullExecFunc(t, exec)()
+	defer withMockedDiscover(t)()
+
+	localPath := os.TempDir() + "/pull_no_encoder.txt"
+	defer os.Remove(localPath)
+
+	cmd := newPullTestCmd()
+	var errBuf bytes.Buffer
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"/remote/file.txt", localPath})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected non-zero exit when no encoder found, got nil")
+	}
+}
+
+// TestRunPull_NilChecksummer_WarnAndProceed verifies:
+//   - Exit code 0 when encoder found but no checksummer
+//   - Warning printed to stderr
+//   - "Checksum NOT verified." in stderr
+func TestRunPull_NilChecksummer_WarnAndProceed(t *testing.T) {
+	content := []byte("pull content without checksum")
+	encoded := base64.StdEncoding.EncodeToString(content)
+	size := len(content)
+
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		// Encoder probe: base64 succeeds with expected output
+		if strings.Contains(cmd, "printf 'test'") && strings.Contains(cmd, "base64") {
+			return &types.ExecResponse{ExitCode: 0, Output: "dGVzdA=="}, nil
+		}
+		// All checksum probes fail → DetectChecksum returns nil
+		if strings.Contains(cmd, "echo -n") {
+			return &types.ExecResponse{ExitCode: 1, Output: ""}, nil
+		}
+		// File size
+		if strings.Contains(cmd, "wc -c") {
+			return &types.ExecResponse{ExitCode: 0, Output: string(rune('0'+size/10)) + "\n"}, nil
+		}
+		if strings.Contains(cmd, "wc -c") {
+			return &types.ExecResponse{ExitCode: 0, Output: "29\n"}, nil
+		}
+		// Actual wc -c
+		if strings.Contains(cmd, "wc") {
+			return &types.ExecResponse{ExitCode: 0, Output: "29\n"}, nil
+		}
+		// File transfer: base64 encode
+		if strings.Contains(cmd, "cat") || strings.Contains(cmd, "base64") {
+			return &types.ExecResponse{ExitCode: 0, Output: encoded}, nil
+		}
+		return &types.ExecResponse{ExitCode: 0, Output: ""}, nil
+	}
+
+	defer withPullExecFunc(t, exec)()
+	defer withMockedDiscover(t)()
+
+	localPath := os.TempDir() + "/pull_no_checksum.txt"
+	defer os.Remove(localPath)
+
+	cmd := newPullTestCmd()
+	var errBuf bytes.Buffer
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"/remote/file.txt", localPath})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("expected exit 0, got: %v", err)
+	}
+
+	stderr := errBuf.String()
+	if !strings.Contains(stderr, "Warning") {
+		t.Errorf("expected warning in stderr when checksummer is nil\nstderr:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "Checksum NOT verified.") {
+		t.Errorf("expected 'Checksum NOT verified.' in stderr\nstderr:\n%s", stderr)
+	}
+}
 
 func TestPullCmd_Use(t *testing.T) {
 	if pullCmd.Use != "pull <remote-path> <local-path>" {

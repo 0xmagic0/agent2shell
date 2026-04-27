@@ -1,11 +1,106 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/0xmagic0/agent2shell/pkg/transfer"
+	"github.com/0xmagic0/agent2shell/pkg/types"
+	"github.com/spf13/cobra"
 )
+
+// makePushLocalFile creates a temp file with known content and returns its path.
+func makePushLocalFile(t *testing.T, content []byte) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "push_cli_*")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	if _, err := f.Write(content); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	f.Close()
+	return f.Name()
+}
+
+// withPushExecBuilder replaces the global pushExecBuilder with a mock and returns a cleanup func.
+func withPushExecBuilder(t *testing.T, exec transfer.ExecFunc) func() {
+	t.Helper()
+	orig := pushExecBuilder
+	pushExecBuilder = func(_ string) transfer.ExecFunc { return exec }
+	return func() { pushExecBuilder = orig }
+}
+
+// newPushTestCmd returns a fresh push cobra.Command isolated from the global tree.
+func newPushTestCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "push <local-path> <remote-path>",
+		Args:         cobra.ExactArgs(2),
+		RunE:         runPush,
+		SilenceUsage: true,
+	}
+	cmd.Flags().IntP("timeout", "t", 300, "transfer timeout in seconds")
+	return cmd
+}
+
+// withMockedDiscover replaces discoverFunc to return a single fake socket path.
+func withMockedDiscover(t *testing.T) func() {
+	t.Helper()
+	orig := discoverFunc
+	discoverFunc = func() ([]string, error) {
+		return []string{"/tmp/fake.sock"}, nil
+	}
+	return func() { discoverFunc = orig }
+}
+
+// TestRunPush_NilChecksummer_WarnAndProceed verifies:
+//   - Exit code 0 when no checksummer is found on target
+//   - Warning is printed to stderr
+//   - "Checksum NOT verified." appears in stderr
+func TestRunPush_NilChecksummer_WarnAndProceed(t *testing.T) {
+	content := []byte("test content for push")
+	localPath := makePushLocalFile(t, content)
+
+	exec := func(_ context.Context, cmd string, _ int) (*types.ExecResponse, error) {
+		// Decoder probe: base64 succeeds
+		if strings.Contains(cmd, "base64 --decode") {
+			return &types.ExecResponse{ExitCode: 0, Output: "test"}, nil
+		}
+		// All checksum probes fail → DetectChecksum returns nil
+		if strings.Contains(cmd, "echo -n") {
+			return &types.ExecResponse{ExitCode: 1, Output: ""}, nil
+		}
+		// Chunk push: succeeds
+		return &types.ExecResponse{ExitCode: 0, Output: ""}, nil
+	}
+
+	defer withPushExecBuilder(t, exec)()
+	defer withMockedDiscover(t)()
+
+	cmd := newPushTestCmd()
+	var errBuf bytes.Buffer
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{localPath, "/remote/out.bin"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("expected nil error (exit 0), got: %v", err)
+	}
+
+	stderr := errBuf.String()
+	if !strings.Contains(stderr, "Warning") {
+		t.Errorf("expected warning in stderr when checksummer is nil\nstderr:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "Checksum NOT verified.") {
+		t.Errorf("expected 'Checksum NOT verified.' in stderr\nstderr:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "Checksum verified.") && !strings.Contains(stderr, "NOT") {
+		t.Errorf("must NOT print 'Checksum verified.' (without NOT)\nstderr:\n%s", stderr)
+	}
+}
 
 func TestHumanSize(t *testing.T) {
 	tests := []struct {

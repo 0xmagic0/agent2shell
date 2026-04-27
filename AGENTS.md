@@ -39,7 +39,7 @@ Programmable reverse shell interface for AI agents. Go 1.22+, single static bina
 
 ## Security
 
-- Base64 transfer checksums are mandatory, not optional
+- Base64 transfer checksums use a 6-tool fallback chain; warn and proceed if no tool is available
 
 ## CI/CD
 
