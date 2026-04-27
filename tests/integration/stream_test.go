@@ -51,7 +51,7 @@ func TestStreamFullPath(t *testing.T) {
 	ctx, ctxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer ctxCancel()
 
-	resp, err := client.StreamRun(ctx, sockPath, "seq 1 5", 5, func(line string) {
+	resp, err := client.StreamRun(ctx, sockPath, "seq 1 5", 5, "", func(line string) {
 		gotLines = append(gotLines, line)
 	})
 
@@ -103,7 +103,7 @@ func TestStreamTimeout_MidStream(t *testing.T) {
 	ctx, ctxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer ctxCancel()
 
-	_, err := client.StreamRun(ctx, sockPath, "stall-cmd", 0, func(line string) {
+	_, err := client.StreamRun(ctx, sockPath, "stall-cmd", 0, "", func(line string) {
 		gotLines = append(gotLines, line)
 	})
 
@@ -139,7 +139,7 @@ func TestBufferedRunUnchanged(t *testing.T) {
 	ctx, ctxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer ctxCancel()
 
-	resp, err := client.Run(ctx, sockPath, "echo buffered", 5)
+	resp, err := client.Run(ctx, sockPath, "echo buffered", 5, "")
 
 	require.NoError(t, <-shellDone)
 	require.NoError(t, err)

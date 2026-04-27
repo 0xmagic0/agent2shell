@@ -62,7 +62,7 @@ func withBroadcastMocks(
 		}
 		return nil, errors.New("unexpected path: " + path)
 	}
-	runFunc = func(ctx context.Context, sockPath, command string, timeout int) (*types.ExecResponse, error) {
+	runFunc = func(ctx context.Context, sockPath, command string, timeout int, stdin string) (*types.ExecResponse, error) {
 		if runErrors != nil {
 			if err, ok := runErrors[sockPath]; ok {
 				return nil, err

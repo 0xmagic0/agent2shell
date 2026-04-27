@@ -177,7 +177,7 @@ func newTransferServer(t *testing.T) (sockPath string, fs *mockFS) {
 // makeExec wraps client.Run into a transfer.ExecFunc for the given socket path.
 func makeExec(sockPath string) transfer.ExecFunc {
 	return func(ctx context.Context, cmd string, timeout int) (*types.ExecResponse, error) {
-		return client.Run(ctx, sockPath, cmd, timeout)
+		return client.Run(ctx, sockPath, cmd, timeout, "")
 	}
 }
 

@@ -73,12 +73,19 @@ func checkError(raw json.RawMessage) error {
 // When the server reports an exec-level error (resp.Error != ""), Run returns
 // both the response and a non-nil error so callers can inspect partial output.
 // Transport-level errors (dial, write, read) return nil, error.
-func Run(ctx context.Context, socketPath, command string, timeout int) (*types.ExecResponse, error) {
-	raw, err := do(ctx, socketPath, &types.Request{
+//
+// stdin is the content to pipe as standard input to the remote command via a
+// heredoc wrapper. Pass an empty string to use the standard execution path.
+func Run(ctx context.Context, socketPath, command string, timeout int, stdin string) (*types.ExecResponse, error) {
+	req := &types.Request{
 		Type:    types.RunRequest,
 		Command: command,
 		Timeout: timeout,
-	})
+	}
+	if stdin != "" {
+		req.Stdin = stdin
+	}
+	raw, err := do(ctx, socketPath, req)
 	if err != nil {
 		return nil, fmt.Errorf("client: run on %s: %w", socketPath, err)
 	}
@@ -144,8 +151,11 @@ func List(ctx context.Context, socketPath string) (*types.SessionsResponse, erro
 // all received lines joined by newline, plus ExitCode and DurationMS from the
 // StreamEnd frame.
 //
+// stdin is the content to pipe as standard input to the remote command via a
+// heredoc wrapper. Pass an empty string to use the standard execution path.
+//
 // client.Run remains unchanged; StreamRun is the opt-in streaming variant.
-func StreamRun(ctx context.Context, socketPath, command string, timeout int, onLine func(string)) (*types.ExecResponse, error) {
+func StreamRun(ctx context.Context, socketPath, command string, timeout int, stdin string, onLine func(string)) (*types.ExecResponse, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "unix", socketPath)
 	if err != nil {
@@ -164,6 +174,9 @@ func StreamRun(ctx context.Context, socketPath, command string, timeout int, onL
 		Command: command,
 		Timeout: timeout,
 		Stream:  true,
+	}
+	if stdin != "" {
+		req.Stdin = stdin
 	}
 	if err := socket.WriteFrame(conn, req); err != nil {
 		return nil, fmt.Errorf("client: stream write request: %w", err)

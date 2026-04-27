@@ -87,7 +87,7 @@ func cannedHandler() socket.Handler {
 func TestClientRun_Integration(t *testing.T) {
 	sockPath := startServer(t, cannedHandler())
 
-	resp, err := client.Run(context.Background(), sockPath, "id", 0)
+	resp, err := client.Run(context.Background(), sockPath, "id", 0, "")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "uid=0(root)", resp.Output)
@@ -142,7 +142,7 @@ func TestClientKill_Integration(t *testing.T) {
 func TestClientRun_ConnectionRefused(t *testing.T) {
 	sockPath := filepath.Join(t.TempDir(), "nonexistent.sock")
 
-	_, err := client.Run(context.Background(), sockPath, "id", 0)
+	_, err := client.Run(context.Background(), sockPath, "id", 0, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dial")
 }
@@ -157,7 +157,7 @@ func TestClientRun_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	_, err := client.Run(ctx, sockPath, "id", 0)
+	_, err := client.Run(ctx, sockPath, "id", 0, "")
 	require.Error(t, err)
 }
 
@@ -188,7 +188,7 @@ func TestClientConcurrent(t *testing.T) {
 
 	for i := 0; i < goroutines; i++ {
 		go func() {
-			resp, err := client.Run(context.Background(), sockPath, "id", 0)
+			resp, err := client.Run(context.Background(), sockPath, "id", 0, "")
 			if err != nil {
 				errs <- err
 				return
@@ -235,6 +235,6 @@ func TestClientRun_DeadlineExceeded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := client.Run(ctx, sockPath, "id", 0)
+	_, err := client.Run(ctx, sockPath, "id", 0, "")
 	require.Error(t, err)
 }

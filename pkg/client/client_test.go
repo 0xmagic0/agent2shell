@@ -55,7 +55,7 @@ func TestDo_Success(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	resp, err := client.Run(ctx, sockPath, "echo hello", 5)
+	resp, err := client.Run(ctx, sockPath, "echo hello", 5, "")
 	require.NoError(t, err)
 	assert.Equal(t, "hello", resp.Output)
 }
@@ -65,7 +65,7 @@ func TestDo_ConnectionRefused(t *testing.T) {
 	sockPath := testutil.TempSocket(t)
 
 	ctx := context.Background()
-	_, err := client.Run(ctx, sockPath, "id", 5)
+	_, err := client.Run(ctx, sockPath, "id", 5, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "client:")
 }
@@ -77,7 +77,7 @@ func TestDo_ContextDeadlineExceeded(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-1*time.Second))
 	defer cancel()
 
-	_, err := client.Run(ctx, sockPath, "id", 5)
+	_, err := client.Run(ctx, sockPath, "id", 5, "")
 	require.Error(t, err)
 }
 
@@ -90,7 +90,7 @@ func TestCheckError_ErrorField(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	_, err := client.Run(ctx, sockPath, "id", 5)
+	_, err := client.Run(ctx, sockPath, "id", 5, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "client:")
 }
@@ -102,7 +102,7 @@ func TestCheckError_StatusOK(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	resp, err := client.Run(ctx, sockPath, "echo hello", 5)
+	resp, err := client.Run(ctx, sockPath, "echo hello", 5, "")
 	require.NoError(t, err)
 	assert.Equal(t, 0, resp.ExitCode)
 }
@@ -114,7 +114,7 @@ func TestCheckError_OutputNoError(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	resp, err := client.Run(ctx, sockPath, "echo hello", 5)
+	resp, err := client.Run(ctx, sockPath, "echo hello", 5, "")
 	require.NoError(t, err)
 	assert.Equal(t, "hello", resp.Output)
 }
@@ -126,7 +126,7 @@ func TestCheckError_EmptyErrorField(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	resp, err := client.Run(ctx, sockPath, "true", 5)
+	resp, err := client.Run(ctx, sockPath, "true", 5, "")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp.Output)
 }
@@ -143,7 +143,7 @@ func TestRun_Success(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	got, err := client.Run(ctx, sockPath, "id", 5)
+	got, err := client.Run(ctx, sockPath, "id", 5, "")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, want.Output, got.Output)
@@ -159,7 +159,7 @@ func TestRun_RemoteError(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	resp, err := client.Run(ctx, sockPath, "sleep 100", 1)
+	resp, err := client.Run(ctx, sockPath, "sleep 100", 1, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exec timeout")
 	// Response must be non-nil so the caller can inspect partial output.
@@ -173,7 +173,7 @@ func TestRun_ServerError(t *testing.T) {
 	sockPath := setupMockServer(t, handler)
 
 	ctx := context.Background()
-	_, err := client.Run(ctx, sockPath, "id", 5)
+	_, err := client.Run(ctx, sockPath, "id", 5, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "client:")
 }

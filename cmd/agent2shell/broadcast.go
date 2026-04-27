@@ -111,7 +111,7 @@ func runBroadcast(cmd *cobra.Command, args []string) error {
 			defer cancel()
 
 			start := time.Now()
-			resp, runErr := runFunc(execCtx, sockPath, command, timeout)
+			resp, runErr := runFunc(execCtx, sockPath, command, timeout, "")
 			dur := time.Since(start).Milliseconds()
 
 			r := broadcastResult{

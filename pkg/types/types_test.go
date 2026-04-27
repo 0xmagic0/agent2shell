@@ -218,6 +218,59 @@ func TestSessionsResponse_RoundTrip(t *testing.T) {
 	assert.Equal(t, in, got)
 }
 
+// ─── Task 1.1: Request.Stdin field — omitempty + value ───────────────────────
+
+// TestRequest_StdinOmittedWhenEmpty verifies that Request.Stdin is absent from
+// the marshalled JSON when not set (omitempty).
+func TestRequest_StdinOmittedWhenEmpty(t *testing.T) {
+	req := types.Request{Type: types.RunRequest, Command: "id"}
+	data, err := json.Marshal(req)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `"stdin"`)
+}
+
+// TestRequest_StdinPresentWhenSet verifies that Request.Stdin is present in
+// the marshalled JSON when non-empty.
+func TestRequest_StdinPresentWhenSet(t *testing.T) {
+	req := types.Request{
+		Type:    types.RunRequest,
+		Command: "bash",
+		Stdin:   "id\nwhoami\n",
+	}
+	data, err := json.Marshal(req)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"stdin"`)
+	assert.Contains(t, string(data), "id\\nwhoami\\n")
+}
+
+// TestRequest_StdinRoundTrip verifies Request.Stdin survives a marshal/unmarshal
+// cycle unchanged.
+func TestRequest_StdinRoundTrip(t *testing.T) {
+	tests := []struct {
+		name  string
+		stdin string
+	}{
+		{"simple script", "id\nwhoami\n"},
+		{"single quotes", "echo 'hello world'\n"},
+		{"backslashes", `echo "line\\n"`},
+		{"marker-like string", "echo '---A2S-START-deadbeef---'\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			in := types.Request{
+				Type:    types.RunRequest,
+				Command: "bash",
+				Stdin:   tc.stdin,
+			}
+			data, err := json.Marshal(in)
+			require.NoError(t, err)
+			var got types.Request
+			require.NoError(t, json.Unmarshal(data, &got))
+			assert.Equal(t, in.Stdin, got.Stdin)
+		})
+	}
+}
+
 // Additional: RequestType constants have expected string values.
 func TestRequestType_Constants(t *testing.T) {
 	assert.Equal(t, types.RequestType("run"), types.RunRequest)

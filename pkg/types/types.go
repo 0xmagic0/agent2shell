@@ -74,6 +74,11 @@ type Request struct {
 	// single buffered ExecResponse. Defaults to false; old clients omit this
 	// field and receive the unmodified buffered response.
 	Stream bool `json:"stream,omitempty"`
+
+	// Stdin holds the content to pipe as standard input to the remote command
+	// via a heredoc wrapper. When empty, execution follows the standard path
+	// unchanged. Old clients that omit this field continue to work unmodified.
+	Stdin string `json:"stdin,omitempty"`
 }
 
 // ExecResponse is the JSON message returned after a command execution.
