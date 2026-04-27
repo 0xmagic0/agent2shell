@@ -45,7 +45,7 @@ agent2shell pull /etc/shadow ./loot/shadow
 # Clone and start the lab
 git clone https://github.com/0xmagic0/ctf-labs.git
 cd ctf-labs/supplyline
-docker compose up -d --build
+bash build.sh
 
 # Terminal 1: catch a reverse shell
 agent2shell catch -p 4444
