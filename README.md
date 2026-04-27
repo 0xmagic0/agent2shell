@@ -3,7 +3,7 @@
   <img src="assets/logo-white.svg#gh-dark-mode-only" width="40%">
 </p>
 <p align="center">
-  <b>agent2shell</b> is a Go CLI interface between reverse shells and AI agents for AI-augmented security research and penetration testing.
+  <b>agent2shell</b> is a shell-control layer for AI-assisted security research and pentesting.
 </p>
 <p align="center">
   <a href="https://github.com/0xmagic0/agent2shell/releases"><img alt="Release" src="https://img.shields.io/github/v/release/0xmagic0/agent2shell"></a>
@@ -254,7 +254,7 @@ make fmt                # gofmt + goimports
 ## Design
 
 - **Not a C2 framework.** A shell interface. Catches shells, makes them programmable.
-- **Not an AI agent.** A clean bridge. Any agent connects through the socket.
+- **Not an AI pentester.** Infrastructure for AI pentesters. Any agent connects through the socket.
 - **Unix sockets for IPC.** Fast, no HTTP overhead, works with SSH forwarding.
 - **Double-marker protocol.** Start + end markers with UUID for reliable command boundaries.
 
