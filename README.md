@@ -225,6 +225,8 @@ Infrastructure automation for development and testing.
 
 ## Installation
 
+Linux and macOS only. Windows is not supported.
+
 ```bash
 # From source
 git clone https://github.com/0xmagic0/agent2shell.git
