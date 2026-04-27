@@ -20,9 +20,9 @@ func TestVerifyChecksum_UsesVerifyTemplate(t *testing.T) {
 	const remotePath = "/tmp/file.bin"
 
 	tests := []struct {
-		name     string
-		tmpl     string
-		wantCmd  string
+		name    string
+		tmpl    string
+		wantCmd string
 	}{
 		{
 			name:    "md5sum template",
